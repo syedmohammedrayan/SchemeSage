@@ -103,12 +103,11 @@ router.put('/applications/:id/status', async (req: AuthRequest, res: Response) =
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const app = await ApplicationModel.findOne({ id: req.params.id });
+    const app = await ApplicationModel.findOneAndUpdate(
+      { id: req.params.id },
+      { status, updatedAt: new Date() }
+    );
     if (!app) return res.status(404).json({ error: 'Application not found' });
-
-    app.status = status;
-    app.updatedAt = new Date();
-    await app.save();
 
     await NotificationModel.create({
       id: crypto.randomUUID(),

@@ -277,6 +277,23 @@ class FirestoreWrapper {
     }
   }
 
+  // Mimics: Model.deleteMany(query)
+  async deleteMany(query: any) {
+    try {
+      const ref = this.getQueryRef(query);
+      const snapshot = await ref.get();
+      const batch = db.batch();
+      snapshot.forEach((doc: any) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      return { deletedCount: snapshot.size };
+    } catch (err) {
+      console.error(`[Firestore deleteMany Error: ${this.collectionName}]`, err);
+      throw err;
+    }
+  }
+
   // Mimics: Model.countDocuments(query)
   async countDocuments(query: any = {}) {
     try {

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity } from "lucide-react";
+import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity, Edit } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
 import { useGovernmentAnalytics, useGovernmentApplications } from "@/hooks/useGovernment";
@@ -35,6 +35,12 @@ const GovernmentDashboard = () => {
     name: '', ministry: '', description: '', benefits: '',
     eligibility: '', documents: '', applyLink: '', tags: '', deadline: ''
   });
+  const [editSchemeDialog, setEditSchemeDialog] = useState(false);
+  const [editSchemeForm, setEditSchemeForm] = useState({
+    id: '', name: '', ministry: '', description: '', benefits: '',
+    eligibility: '', documents: '', applyLink: '', tags: '', deadline: ''
+  });
+  const [updatingScheme, setUpdatingScheme] = useState(false);
 
   const [agents, setAgents] = useState<any[]>([]);
   const [pendingAgents, setPendingAgents] = useState<any[]>([]);
@@ -143,6 +149,41 @@ const GovernmentDashboard = () => {
       fetchPublishedSchemes();
       queryClient.invalidateQueries({ queryKey: ['schemes'] });
     } catch { toast({ title: 'Failed to remove scheme', variant: 'destructive' }); }
+  };
+
+  const handleOpenEditScheme = (s: any) => {
+    setEditSchemeForm({
+      id: s.id,
+      name: s.name || '',
+      ministry: s.ministry || '',
+      description: s.description || '',
+      benefits: s.benefits || '',
+      eligibility: s.eligibility || '',
+      documents: Array.isArray(s.documents) ? s.documents.join(', ') : (s.documents || ''),
+      applyLink: s.applyLink || '',
+      tags: Array.isArray(s.tags) ? s.tags.join(', ') : (s.tags || ''),
+      deadline: s.deadline || ''
+    });
+    setEditSchemeDialog(true);
+  };
+
+  const handleUpdateScheme = async () => {
+    if (!editSchemeForm.name || !editSchemeForm.ministry || !editSchemeForm.description || !editSchemeForm.benefits) {
+      toast({ title: 'Missing required fields', description: 'Name, Ministry, Description and Benefits are required.', variant: 'destructive' });
+      return;
+    }
+    setUpdatingScheme(true);
+    try {
+      await api.put(`/government/schemes/${editSchemeForm.id}`, editSchemeForm);
+      toast({ title: '✅ Scheme Updated!', description: `"${editSchemeForm.name}" has been updated successfully.` });
+      setEditSchemeDialog(false);
+      fetchPublishedSchemes();
+      queryClient.invalidateQueries({ queryKey: ['schemes'] });
+    } catch (err: any) {
+      toast({ title: 'Update Failed', description: err.message || 'Could not update scheme.', variant: 'destructive' });
+    } finally {
+      setUpdatingScheme(false);
+    }
   };
 
   const fetchAuditLogs = async () => {
@@ -294,7 +335,7 @@ const GovernmentDashboard = () => {
                                 <p className="text-xs text-muted-foreground truncate">{a.email}</p>
                                 <p className="text-[10px] bg-secondary inline-block px-2 py-0.5 rounded mt-1 font-medium">{a.expertise || 'General'}</p>
                               </div>
-                              <Button variant="ghost" size="icon" onClick={() => handleResolveAgent(a.id, 'rejected')} className="text-destructive h-8 w-8 ml-2 hover:bg-destructive/10">
+                              <Button variant="ghost" size="icon" onClick={() => handleDeleteAgent(a.id)} className="text-destructive h-8 w-8 ml-2 hover:bg-destructive/10">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                            </div>
@@ -504,8 +545,17 @@ const GovernmentDashboard = () => {
                           <span className="flex items-center gap-1"><Bookmark className="h-3 w-3" /> {s.saves?.toLocaleString()} saves</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        {s.deadline && <Badge variant="secondary" className="text-xs">Deadline: {s.deadline}</Badge>}
+                      <div className="flex items-center gap-1">
+                        {s.deadline && <Badge variant="secondary" className="text-xs mr-2">Deadline: {s.deadline}</Badge>}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:bg-muted/50 h-8 w-8"
+                          onClick={() => handleOpenEditScheme(s)}
+                          title="Edit Scheme"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -694,14 +744,26 @@ const GovernmentDashboard = () => {
                                 </a>
                               )}
                             </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive hover:bg-destructive/10 shrink-0"
-                              onClick={() => handleDeletePublishedScheme(s.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-muted-foreground hover:bg-muted/50 h-8 w-8 p-0"
+                                onClick={() => handleOpenEditScheme(s)}
+                                title="Edit Scheme"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                                onClick={() => handleDeletePublishedScheme(s.id)}
+                                title="Remove Scheme"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -887,6 +949,74 @@ const GovernmentDashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Scheme Dialog */}
+      <Dialog open={editSchemeDialog} onOpenChange={setEditSchemeDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl">Edit Published Scheme</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Scheme Name *</Label>
+              <Input placeholder="e.g. PM Kisan Samman Nidhi" value={editSchemeForm.name} onChange={e => setEditSchemeForm(p => ({...p, name: e.target.value}))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ministry / Department *</Label>
+              <Input placeholder="e.g. Ministry of Agriculture" value={editSchemeForm.ministry} onChange={e => setEditSchemeForm(p => ({...p, ministry: e.target.value}))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</Label>
+              <textarea
+                rows={3}
+                placeholder="What does this scheme do?"
+                value={editSchemeForm.description}
+                onChange={e => setEditSchemeForm(p => ({...p, description: e.target.value}))}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Benefits *</Label>
+              <textarea
+                rows={2}
+                placeholder="Key benefits for beneficiaries"
+                value={editSchemeForm.benefits}
+                onChange={e => setEditSchemeForm(p => ({...p, benefits: e.target.value}))}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Eligibility</Label>
+              <Input placeholder="e.g. Farmers with < 2 hectares land" value={editSchemeForm.eligibility} onChange={e => setEditSchemeForm(p => ({...p, eligibility: e.target.value}))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Required Documents (comma-separated)</Label>
+              <Input placeholder="e.g. Aadhaar, Bank Passbook, Land Record" value={editSchemeForm.documents} onChange={e => setEditSchemeForm(p => ({...p, documents: e.target.value}))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Official Apply Link</Label>
+              <Input placeholder="https://..." value={editSchemeForm.applyLink} onChange={e => setEditSchemeForm(p => ({...p, applyLink: e.target.value}))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tags</Label>
+                <Input placeholder="Agriculture, Farmers" value={editSchemeForm.tags} onChange={e => setEditSchemeForm(p => ({...p, tags: e.target.value}))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Deadline</Label>
+                <Input type="date" value={editSchemeForm.deadline} onChange={e => setEditSchemeForm(p => ({...p, deadline: e.target.value}))} />
+              </div>
+            </div>
+            <Button
+              className="w-full h-11 bg-accent hover:bg-accent/90 text-white font-bold mt-2"
+              onClick={handleUpdateScheme}
+              disabled={updatingScheme}
+            >
+              {updatingScheme ? 'Updating...' : '💾 Save Changes'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -42,6 +42,11 @@ const AdminDashboard = () => {
   const [scraping, setScraping] = useState(false);
   const [agentDialog, setAgentDialog] = useState(false);
 
+  // App Action Modals
+  const [actionAppId, setActionAppId] = useState<string | null>(null);
+  const [actionType, setActionType] = useState<"approve" | "reject" | null>(null);
+  const [actionNotes, setActionNotes] = useState("");
+
   const [helpRequests, setHelpRequests] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -77,9 +82,24 @@ const AdminDashboard = () => {
     });
   };
 
-  const assistedApps = applications.filter((app: any) => app.status === 'submitted' || app.type === 'assisted');
+  const assistedApps = applications.filter((app: any) => app.status === 'submitted');
 
   const handleLogout = () => { logout(); navigate("/"); };
+
+  const handleActionSubmit = () => {
+    if (!actionAppId || !actionType) return;
+    updateAppStatus.mutate({ id: actionAppId, status: actionType === 'approve' ? 'approved' : 'rejected' }, {
+      onSuccess: () => {
+        toast({ 
+          title: actionType === 'approve' ? "Application Approved" : "Application Rejected", 
+          description: `Citizen has been notified. Notes: ${actionNotes || 'None'}` 
+        });
+        setActionAppId(null);
+        setActionType(null);
+        setActionNotes("");
+      }
+    });
+  };
 
   const handleCreateScheme = () => {
     createScheme.mutate({
@@ -356,7 +376,7 @@ const AdminDashboard = () => {
                                   <Button 
                                     size="sm" 
                                     className="bg-success hover:bg-success/90 text-white font-black px-6 rounded-xl h-12 shadow-lg shadow-success/20 transition-all active:scale-95"
-                                    onClick={() => updateAppStatus.mutate({ id: app.id, status: "approved" })}
+                                    onClick={() => { setActionAppId(app.id); setActionType('approve'); setActionNotes(''); }}
                                   >
                                     Verify & Approve
                                   </Button>
@@ -364,7 +384,7 @@ const AdminDashboard = () => {
                                     size="sm"
                                     variant="outline"
                                     className="border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white font-black px-6 rounded-xl h-12 transition-all active:scale-95"
-                                    onClick={() => updateAppStatus.mutate({ id: app.id, status: "rejected" })}
+                                    onClick={() => { setActionAppId(app.id); setActionType('reject'); setActionNotes(''); }}
                                   >
                                     Reject
                                   </Button>
@@ -379,6 +399,50 @@ const AdminDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Action Dialog */}
+            <Dialog open={!!actionAppId} onOpenChange={(open) => { if (!open) setActionAppId(null); }}>
+              <DialogContent className="bg-slate-900 border-white/10 text-white shadow-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-black flex items-center gap-2">
+                    {actionType === 'approve' ? <CheckCircle className="text-success h-6 w-6" /> : <XCircle className="text-red-500 h-6 w-6" />}
+                    {actionType === 'approve' ? "Verify & Approve Application" : "Reject Application"}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="p-4 rounded-xl border border-white/5 bg-black/40">
+                    <p className="text-sm text-slate-400 font-medium">
+                      {actionType === 'approve' 
+                        ? "You are about to approve this application. The citizen will be notified immediately that their service has been fulfilled." 
+                        : "You are rejecting this application. Please provide a clear reason so the citizen knows how to correct their submission."}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black uppercase text-slate-500 tracking-widest">
+                      {actionType === 'approve' ? 'Approval Notes (Optional)' : 'Rejection Reason (Required)'}
+                    </Label>
+                    <Textarea 
+                      value={actionNotes} 
+                      onChange={e => setActionNotes(e.target.value)} 
+                      placeholder={actionType === 'approve' ? "e.g., All documents verified successfully." : "e.g., Aadhaar card scan is blurry. Please re-upload."}
+                      className="bg-slate-800 border-white/10 text-white resize-none h-24"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleActionSubmit} 
+                    disabled={actionType === 'reject' && actionNotes.trim().length === 0}
+                    className={`w-full font-black h-12 text-md transition-all ${
+                      actionType === 'approve' 
+                        ? 'bg-success hover:bg-success/90 text-white shadow-lg shadow-success/20' 
+                        : 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
+                    }`}
+                  >
+                    {actionType === 'approve' ? "Confirm Approval" : "Confirm Rejection"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
           </TabsContent>
 
           {/* Citizen Help Centre */}

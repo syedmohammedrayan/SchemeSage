@@ -241,16 +241,7 @@ const Discover = () => {
 
           {/* Right: Voice Input Section */}
           <div className="lg:col-span-4 h-full">
-            <Card className="bg-accent/5 border-accent/20 h-full flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent" />
-               <VoiceInput onResult={handleVoice} />
-               <div className="mt-8 space-y-2">
-                 <h4 className="font-heading font-bold text-xl text-accent">Voice Search</h4>
-                 <p className="text-sm text-slate-400">
-                   Tap the mic and speak in any language (Hindi, Telugu, etc.) to describe your situation.
-                 </p>
-               </div>
-            </Card>
+            <VoiceInput onResult={handleVoice} />
           </div>
         </div>
 

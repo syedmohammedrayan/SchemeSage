@@ -6,7 +6,8 @@ import {
   SchemeModel, 
   ScrapedSchemeModel,
   AuditLogModel,
-  UserModel
+  UserModel,
+  SavedSchemeModel
 } from '../models/index.js';
 import { db } from '../config/db.js';
 import crypto from 'crypto';
@@ -394,7 +395,7 @@ router.put('/schemes/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /government/schemes/:id — remove any scheme (official or scraped)
+// DELETE /government/schemes/:id — remove any scheme (official or scraped) completely from database
 router.delete('/schemes/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -410,16 +411,22 @@ router.delete('/schemes/:id', async (req: AuthRequest, res: Response) => {
 
     if (!deleted) return res.status(404).json({ error: 'Scheme not found.' });
 
+    // Clean up all user bookmarks/saved schemes associated with this scheme
+    await SavedSchemeModel.deleteMany({ schemeId: id });
+
+    // Clean up all applications associated with this scheme
+    await ApplicationModel.deleteMany({ schemeId: id });
+
     await AuditLogModel.create({
       id: crypto.randomUUID(),
       actorId: req.user?.id,
       actorName: req.user?.fullName,
       action: 'delete_scheme',
       targetId: id,
-      details: `Deleted ${modelType} scheme: "${deleted.name}"`,
+      details: `Deleted ${modelType} scheme and cleaned up all user bookmarks and applications: "${deleted.name}"`,
     });
 
-    res.json({ success: true, message: `Successfully removed ${modelType} scheme.` });
+    res.json({ success: true, message: `Successfully removed ${modelType} scheme and all associated data.` });
   } catch (error) {
     console.error('[Delete Scheme Error]', error);
     res.status(500).json({ error: 'Failed to delete scheme.' });

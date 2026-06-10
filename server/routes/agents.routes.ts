@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import { Router, Response } from "express";
 import { authMiddleware, optionalAuthMiddleware, AuthRequest } from "../middleware/auth.js";
-import { db } from '../config/db.js';
-import { AgentRequestModel, NotificationModel } from '../models/index.js';
+import { db, auth } from '../config/db.js';
+import { AgentRequestModel, NotificationModel, AuditLogModel } from '../models/index.js';
 
 const router = Router();
 
@@ -98,21 +98,48 @@ router.get("/requests/:agentId", authMiddleware, async (req, res) => {
   }
 });
 
-// RESTRICTED TO GOVERNMENT: Revoke an agent's active status
+// RESTRICTED TO GOVERNMENT: Delete an agent completely from website and database
 router.delete("/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     if (req.user?.role !== 'government') {
       return res.status(403).json({ error: "Agent management is restricted to Government officials." });
     }
-    const agentDoc = await db.collection('users').doc(req.params.id).get();
+    const agentId = req.params.id;
+    const agentDoc = await db.collection('users').doc(agentId).get();
     if (!agentDoc.exists) return res.status(404).json({ error: "Agent not found" });
 
-    await db.collection('users').doc(req.params.id).update({
-      status: 'rejected',
-      updatedAt: new Date().toISOString(),
-    });
-    res.json({ success: true, message: 'Agent license revoked.' });
-  } catch (e) {
+    // 1. Delete from Firebase Auth if it exists
+    if (auth) {
+      try {
+        await auth.deleteUser(agentId);
+        console.log(`[Firebase Auth] Successfully deleted user ${agentId}`);
+      } catch (authErr: any) {
+        console.warn(`[Firebase Auth Warning] Could not delete auth user ${agentId}:`, authErr.message);
+      }
+    }
+
+    // 2. Delete from Firestore users collection
+    await db.collection('users').doc(agentId).delete();
+    console.log(`[Firestore] Successfully deleted agent ${agentId} from users`);
+
+    // 3. Create Audit Log for agent deletion
+    try {
+      await AuditLogModel.create({
+        id: crypto.randomUUID(),
+        actorId: req.user?.id,
+        actorName: req.user?.fullName,
+        action: 'delete_agent',
+        targetId: agentId,
+        details: `Government official ${req.user?.fullName} completely deleted agent: ${agentDoc.data()?.fullName || agentId} (${agentId}) from the system.`,
+      });
+      console.log(`[Audit Trail] Logged deletion of agent: ${agentId}`);
+    } catch (auditErr: any) {
+      console.error('[Audit Log Error] Failed to log agent deletion:', auditErr.message);
+    }
+
+    res.json({ success: true, message: 'Agent removed completely.' });
+  } catch (e: any) {
+    console.error('[Agents DELETE Error]', e.message);
     res.status(500).json({ error: 'Server Error' });
   }
 });

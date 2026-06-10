@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity, Edit } from "lucide-react";
+import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity, Edit, RefreshCcw, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
 import { useGovernmentAnalytics, useGovernmentApplications } from "@/hooks/useGovernment";
@@ -46,6 +46,7 @@ const GovernmentDashboard = () => {
   const [pendingAgents, setPendingAgents] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [auditSearch, setAuditSearch] = useState("");
   const [agentDialog, setAgentDialog] = useState(false);
   const [newAgent, setNewAgent] = useState({ name: "", location: "", phone: "", expertise: "" });
 
@@ -574,54 +575,93 @@ const GovernmentDashboard = () => {
           </TabsContent>
 
           {/* Audit Trail */}
-          <TabsContent value="audit-trail">
-            <Card className="shadow-card overflow-hidden">
-              <CardHeader className="bg-muted/10 border-b">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="font-heading flex items-center gap-2">
-                       <Shield className="h-5 w-5 text-accent" /> Security Audit Logs
-                    </CardTitle>
-                    <CardDescription>Immutable record of all sensitive citizen data access requests.</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={fetchAuditLogs} disabled={loadingAudit}>
-                    <Activity className={`h-4 w-4 mr-2 ${loadingAudit ? 'animate-spin' : ''}`} /> Refresh
-                  </Button>
+          <TabsContent value="audit-trail" className="space-y-6">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="font-heading flex items-center gap-2 text-2xl">
+                   <Shield className="h-6 w-6 text-accent" /> Security Audit Logs
+                </CardTitle>
+                <CardDescription className="mt-1">Immutable record of all sensitive citizen data access requests.</CardDescription>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search logs..." 
+                    className="pl-9 w-[250px] bg-background shadow-sm"
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                  />
                 </div>
-              </CardHeader>
+                <Button onClick={fetchAuditLogs} disabled={loadingAudit} className="shadow-sm">
+                  <RefreshCcw className={`h-4 w-4 mr-2 ${loadingAudit ? 'animate-spin' : ''}`} /> Sync Logs
+                </Button>
+              </div>
+            </div>
+
+            <Card className="shadow-md border border-border/50 overflow-hidden">
               <CardContent className="p-0">
                  <div className="overflow-x-auto">
-                   <table className="w-full text-left text-sm border-collapse">
-                     <thead className="bg-muted/30 text-muted-foreground font-medium border-b">
+                   <table className="w-full text-left text-sm whitespace-nowrap">
+                     <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border/50">
                        <tr>
-                         <th className="px-6 py-3 font-bold">Event Type</th>
-                         <th className="px-6 py-3 font-bold">Actor</th>
-                         <th className="px-6 py-3 font-bold">Action Details</th>
-                         <th className="px-6 py-3 font-bold">Timestamp</th>
-                         <th className="px-6 py-3 font-bold">Target ID</th>
+                         <th className="px-6 py-4 font-semibold">Event Type</th>
+                         <th className="px-6 py-4 font-semibold">Actor</th>
+                         <th className="px-6 py-4 font-semibold">Action Details</th>
+                         <th className="px-6 py-4 font-semibold">Timestamp</th>
+                         <th className="px-6 py-4 font-semibold">Target ID</th>
                        </tr>
                      </thead>
-                     <tbody className="divide-y">
+                     <tbody className="divide-y divide-border/50 bg-background/50">
                         {loadingAudit ? (
-                          <tr><td colSpan={5} className="py-12 text-center text-muted-foreground italic">Fetching the encrypted logs...</td></tr>
-                        ) : auditLogs.length === 0 ? (
-                          <tr><td colSpan={5} className="py-12 text-center text-muted-foreground italic">No security incidents recorded.</td></tr>
+                          <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">
+                            <Activity className="h-6 w-6 animate-spin mx-auto mb-2 text-accent" />
+                            Fetching encrypted logs...
+                          </td></tr>
+                        ) : auditLogs.filter(l => (l.action+l.actorName+l.details+l.targetId).toLowerCase().includes(auditSearch.toLowerCase())).length === 0 ? (
+                          <tr><td colSpan={5} className="py-16 text-center text-muted-foreground">
+                            <div className="flex flex-col items-center justify-center">
+                              <Shield className="h-10 w-10 mb-3 opacity-20" />
+                              <p>No security incidents found.</p>
+                            </div>
+                          </td></tr>
                         ) : (
-                          auditLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-accent/5 transition-colors">
+                          auditLogs.filter(l => (l.action+l.actorName+l.details+l.targetId).toLowerCase().includes(auditSearch.toLowerCase())).map((log) => {
+                            const logTime = log.timestamp || log.createdAt;
+                            const formattedTime = logTime ? new Date(logTime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Just now';
+                            const isDanger = log.action.includes('delete') || log.action.includes('reject');
+                            return (
+                            <tr key={log.id} className="hover:bg-muted/30 transition-colors group">
                               <td className="px-6 py-4">
-                                <Badge variant="outline" className="text-[10px] font-mono border-accent/20 bg-accent/5">
+                                <Badge variant="outline" className={`text-[10px] font-mono capitalize tracking-wider ${isDanger ? 'border-destructive/30 text-destructive bg-destructive/5' : 'border-blue-500/30 text-blue-600 bg-blue-500/5 dark:text-blue-400'}`}>
+                                  {isDanger && <AlertTriangle className="h-3 w-3 mr-1 inline-block" />}
                                   {log.action.replace(/_/g, ' ')}
                                 </Badge>
                               </td>
-                              <td className="px-6 py-4 font-medium text-foreground text-xs">{log.actorName}</td>
-                              <td className="px-6 py-4 text-muted-foreground text-[11px] leading-relaxed max-w-xs">{log.details}</td>
-                              <td className="px-6 py-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(log.timestamp).toLocaleString()}</span>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-8 w-8 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-xs">
+                                    {log.actorName?.charAt(0) || 'U'}
+                                  </div>
+                                  <span className="font-medium text-foreground text-sm">{log.actorName}</span>
+                                </div>
                               </td>
-                              <td className="px-6 py-4 font-mono text-[10px] text-muted-foreground/60">{log.targetId || 'N/A'}</td>
+                              <td className="px-6 py-4 text-muted-foreground text-sm max-w-xs truncate" title={log.details}>
+                                 {log.details}
+                              </td>
+                              <td className="px-6 py-4 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                                  <Clock className="h-3.5 w-3.5 text-accent" /> 
+                                  {formattedTime}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 font-mono text-xs text-muted-foreground/70">
+                                 <div className="bg-muted px-2 py-1 rounded-md inline-block border border-border/50">
+                                   {log.targetId ? (log.targetId.length > 20 ? log.targetId.substring(0, 20) + '...' : log.targetId) : 'N/A'}
+                                 </div>
+                              </td>
                             </tr>
-                          ))
+                          )})
                         )}
                      </tbody>
                    </table>

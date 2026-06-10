@@ -113,6 +113,9 @@ class FirestoreWrapper {
 
       const id = data.id || data._id || crypto.randomUUID();
       const docData = { ...data, id };
+      const now = new Date().toISOString();
+      if (!docData.timestamp) docData.timestamp = now;
+      if (!docData.createdAt) docData.createdAt = now;
       // Remove any undefined values which Firestore throws on and convert Dates
       Object.keys(docData).forEach(key => {
         if (docData[key] === undefined) {
@@ -142,6 +145,9 @@ class FirestoreWrapper {
       for (const item of dataArray) {
         const id = item.id || item._id || crypto.randomUUID();
         const docData = { ...item, id };
+        const now = new Date().toISOString();
+        if (!docData.timestamp) docData.timestamp = now;
+        if (!docData.createdAt) docData.createdAt = now;
         
         // Remove undefined and convert Dates
         Object.keys(docData).forEach(key => {

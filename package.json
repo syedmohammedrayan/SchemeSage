@@ -7,6 +7,7 @@
     "dev": "concurrently -n BE,FE -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "node node_modules/vite/bin/vite.js",
     "dev:backend": "node node_modules/tsx/dist/cli.mjs watch server/index.ts",
+    "start:backend": "node node_modules/tsx/dist/cli.mjs server/index.ts",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

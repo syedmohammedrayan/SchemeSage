@@ -1,11 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Scheme, User, ChatMessage, AIRecommendation, EligibilityResult } from '../types/index.js';
-import { scoreSchemeForUser } from '../utils/helpers.js';
+import { Scheme, User, ChatMessage, AIRecommendation, EligibilityResult, CitizenProfile, CitizenReport, EligibilityDimension } from '../types/index.js';
+import { scoreSchemeForUser, scoreWithBreakdown } from '../utils/helpers.js';
 
 let genAI: GoogleGenerativeAI | null = null;
 const summaryCache = new Map<string, string>();
 
-function getModel(withTools = false) {
+function getModel() {
   if (!genAI) {
     const key = process.env.GEMINI_API_KEY;
     if (!key || key === 'your_gemini_api_key_here') {
@@ -14,50 +14,7 @@ function getModel(withTools = false) {
     }
     genAI = new GoogleGenerativeAI(key);
   }
-  
-  const options: any = { model: 'gemini-2.0-flash' };
-  
-  if (withTools) {
-    options.tools = [{
-      functionDeclarations: [
-        {
-          name: "search_schemes",
-          description: "Search for government welfare schemes by keywords or phrases.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              query: { type: "STRING", description: "Search query, e.g. 'agriculture', 'education', 'women'" }
-            },
-            required: ["query"]
-          }
-        },
-        {
-          name: "get_eligibility_and_benefits",
-          description: "Retrieve specific eligibility rules and detailed benefits for a scheme by its name or ID.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              schemeId: { type: "STRING", description: "The unique ID or name of the scheme." }
-            },
-            required: ["schemeId"]
-          }
-        },
-        {
-          name: "check_user_profile_match",
-          description: "Checks how well the user profile matches a specific scheme.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              schemeId: { type: "STRING", description: "The ID of the scheme to match against." }
-            },
-            required: ["schemeId"]
-          }
-        }
-      ]
-    }];
-  }
-
-  return genAI.getGenerativeModel(options);
+  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 }
 
 const langMap: Record<string, string> = {
@@ -74,6 +31,20 @@ const langMap: Record<string, string> = {
   'or-IN': 'Odia',
 };
 
+/**
+ * Pre-filters schemes using the hard-reject engine before passing to Gemini.
+ * This prevents Gemini from ever hallucinating a female-only scheme for a male user.
+ */
+function preFilterSchemes(schemes: Scheme[], userProfile: Partial<User> | CitizenProfile): Array<{ scheme: Scheme; algoScore: number; breakdown: EligibilityDimension[] }> {
+  return schemes
+    .map(s => {
+      const { score, breakdown } = scoreWithBreakdown(s, userProfile);
+      return { scheme: s, algoScore: score, breakdown };
+    })
+    .filter(({ algoScore }) => algoScore > 0) // Remove all hard-rejected schemes
+    .sort((a, b) => b.algoScore - a.algoScore);
+}
+
 export async function getSchemeRecommendations(
   userProfile: Partial<User>,
   allSchemes: Scheme[],
@@ -83,80 +54,106 @@ export async function getSchemeRecommendations(
   const model = getModel();
   const language = langMap[lang] || 'English';
 
-  if (model) {
-    try {
-      const schemeSummaries = allSchemes.map(s =>
-        `ID: ${s.id} | Name: ${s.name} | Ministry: ${s.ministry} | Benefits: ${s.benefits} | Eligibility: age ${s.eligibility.minAge || 'any'}-${s.eligibility.maxAge || 'any'}, income max ${s.eligibility.maxIncome || 'any'}, gender: ${s.eligibility.gender || 'all'}, categories: ${(s.eligibility.categories || []).join(',') || 'all'}, occupations: ${(s.eligibility.occupations || []).join(',') || 'all'}`
-      ).join('\n');
+  // Step 1: Pre-filter using hard-reject rule engine
+  const eligible = preFilterSchemes(allSchemes, userProfile);
 
-      const prompt = `You are an Indian government welfare scheme matching expert. Given a citizen's profile, their specific situation/request (which may be in ${language} or English), and available schemes, return the best matching schemes ranked by relevance.
-
-IMPORTANT LANGUAGE INSTRUCTION:
-- You MUST write the "reason" field ONLY in ${language}.
-- Do NOT use English if ${language} is not English.
-- If you respond in any other language, the answer is incorrect.
-
-Citizen's Profile:
-- Age: ${userProfile.age || 'not specified'}
-- Gender: ${userProfile.gender || 'not specified'}
-- Occupation: ${userProfile.occupation || 'not specified'}
-- Annual Income: ₹${userProfile.annualIncome || 'not specified'}
-- State: ${userProfile.state || 'not specified'}
-- Category: ${userProfile.category || 'not specified'}
-
-Citizen's Situation/Description (in ${language} or English):
-"${query || 'Looking for suitable welfare schemes'}"
-
-Available Schemes (in English):
-${schemeSummaries}
-
-Return ONLY a JSON array with NO extra text, like:
-[{"schemeId": "s1", "matchScore": 95, "reason": "<reason in ${language}>"}]
-
-Rules:
-- matchScore should be 0-100 based on how well the user matches the scheme criteria and their specific situation.
-- Use your advanced language understanding to match the ${language} situation description against the English scheme criteria.
-- Include ALL schemes, even low matches
-- reason must be 1 short sentence in ${language} explaining why this scheme is a good match for their profile and situation
-- If a scheme explicitly excludes the user (wrong gender, too old, etc), give score 0-10`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as AIRecommendation[];
-        return parsed.sort((a, b) => b.matchScore - a.matchScore);
-      }
-    } catch (err) {
-      console.warn('[GEMINI] Recommendation failed, using fallback:', (err as Error).message);
-    }
+  if (eligible.length === 0) {
+    return [];
   }
 
-  // Fallback: algorithmic scoring
-  return allSchemes
-    .map(scheme => ({
-      schemeId: scheme.id,
-      matchScore: scoreSchemeForUser(scheme, userProfile),
-      reason: generateFallbackReason(scheme, userProfile),
-    }))
-    .sort((a, b) => b.matchScore - a.matchScore);
+  // Use the deterministic algorithmic scores directly
+  return eligible.map(({ scheme, algoScore, breakdown }) => ({
+    schemeId: scheme.id,
+    matchScore: algoScore,
+    reason: generateFallbackReason(scheme, userProfile),
+    breakdown,
+  }));
 }
 
-function generateFallbackReason(scheme: Scheme, user: Partial<User>): string {
+function generateFallbackReason(scheme: Scheme, user: Partial<User> | CitizenProfile): string {
   const parts: string[] = [];
-  if (user.occupation && scheme.eligibility.occupations?.some(o => o.toLowerCase() === user.occupation?.toLowerCase())) {
+  if (user.occupation && scheme.eligibility.occupations?.some(o => (user.occupation as string).toLowerCase().includes(o.toLowerCase()))) {
     parts.push(`your ${user.occupation} occupation matches`);
   }
-  if (user.category && scheme.eligibility.categories?.some(c => c.toLowerCase() === user.category?.toLowerCase())) {
+  if (user.category && scheme.eligibility.categories?.some(c => c.toLowerCase() === user.category!.toLowerCase())) {
     parts.push(`${user.category} category is eligible`);
   }
-  if (user.annualIncome && scheme.eligibility.maxIncome && user.annualIncome <= scheme.eligibility.maxIncome) {
+  const userIncome = (user as any).annualIncome ?? (user as any).income;
+  if (userIncome && scheme.eligibility.maxIncome && userIncome <= scheme.eligibility.maxIncome) {
     parts.push('your income qualifies');
+  }
+  if (user.state && scheme.eligibility.states?.some(s => s.toLowerCase() === user.state!.toLowerCase())) {
+    parts.push(`available in ${user.state}`);
   }
   if (parts.length > 0) {
     return `Based on your profile: ${parts.join(', ')}.`;
   }
-  return 'This scheme may be relevant based on general eligibility criteria.';
+  return 'This scheme matches your general eligibility criteria.';
+}
+
+/**
+ * Generates a full Personalized Citizen Report with top matches, partial matches, and document guide.
+ */
+export async function generateCitizenReport(
+  userProfile: CitizenProfile,
+  allSchemes: Scheme[]
+): Promise<CitizenReport> {
+  const model = getModel();
+
+  // Pre-filter using hard-reject engine
+  const eligible = preFilterSchemes(allSchemes, userProfile);
+  
+  // Partial matches: schemes that scored 0 but only because of soft criteria (show near-miss)
+  const allScored = allSchemes.map(s => ({
+    scheme: s,
+    ...scoreWithBreakdown(s, userProfile)
+  }));
+  const partialMatches = allScored
+    .filter(({ score }) => score === 0)
+    .filter(({ breakdown }) => {
+      // Only include if the ONLY failing dimension is occupation (soft reject)
+      const failedDims = breakdown.filter(d => !d.pass);
+      return failedDims.length === 1 && failedDims[0].label === 'Occupation Eligibility';
+    })
+    .slice(0, 3);
+
+  // Profile Summary from Gemini
+  let profileSummary = `${userProfile.age ? `${userProfile.age}-year-old` : 'A'} ${userProfile.gender || ''} ${userProfile.occupation || 'citizen'} from ${userProfile.state || 'India'}${userProfile.category ? ` (${userProfile.category})` : ''}.`;
+
+  if (model) {
+    try {
+      const topSchemeNames = eligible.slice(0, 5).map(e => e.scheme.name).join(', ');
+      const prompt = `In 2 sentences, write a personalized profile summary for a citizen and their top welfare scheme matches. Be warm and encouraging.
+      
+Profile: ${JSON.stringify(userProfile)}
+Top Matching Schemes: ${topSchemeNames}
+
+Return ONLY the 2-sentence summary text, nothing else.`;
+      
+      const result = await model.generateContent(prompt);
+      profileSummary = result.response.text().trim();
+    } catch (e) {
+      // Use the default summary
+    }
+  }
+
+  return {
+    profile: userProfile,
+    profileSummary,
+    topMatches: eligible.slice(0, 8).map(({ scheme, algoScore, breakdown }) => ({
+      scheme,
+      matchScore: algoScore,
+      reason: generateFallbackReason(scheme, userProfile),
+      breakdown,
+      documents: scheme.documents || [],
+    })),
+    partialMatches: partialMatches.map(({ scheme, breakdown }) => ({
+      scheme,
+      matchScore: 0,
+      missingCriteria: breakdown.find(d => !d.pass)?.detail || 'Some criteria do not match',
+    })),
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 export async function chatWithAssistant(
@@ -169,19 +166,21 @@ export async function chatWithAssistant(
 
   if (model) {
     try {
-      const schemeSummaries = allSchemes.map(s =>
-        `- ${s.name} (${s.ministry}): ${s.benefits}. Eligibility: age ${s.eligibility.minAge || 'any'}-${s.eligibility.maxAge || 'any'}, income max ₹${s.eligibility.maxIncome || 'any'}, gender: ${s.eligibility.gender || 'all'}, occupations: ${(s.eligibility.occupations || []).join(', ') || 'all'}. Apply: ${s.applyLink}`
+      // Pre-filter schemes for this user before passing to the chat model
+      const eligible = preFilterSchemes(allSchemes, userProfile);
+      const schemeSummaries = eligible.slice(0, 20).map(({ scheme: s }) =>
+        `- ${s.name} (${s.ministry}): ${s.benefits}. Apply: ${s.applyLink}`
       ).join('\n');
 
-      const systemPrompt = `You are WelfareBot, a helpful AI assistant for the Indian Government Welfare Scheme Navigator app called "Scheme Sage". You help citizens find government schemes they're eligible for, explain scheme benefits, guide them through applications, and answer questions about eligibility.
+      const systemPrompt = `You are SchemeSage Assistant, a helpful welfare advisor for Indian citizens. You help citizens find government schemes they're eligible for, explain benefits, and guide applications.
 
-Be warm, helpful, and speak in simple language. Use Indian English. Keep responses concise (2-4 paragraphs max).
+Be warm, helpful, and speak in simple Indian English. Keep responses concise (2-4 paragraphs max).
 
-Available Schemes:
+Eligible Schemes for This Citizen (pre-filtered for eligibility):
 ${schemeSummaries}
 
-User's Profile:
-- Name: ${userProfile.fullName || 'not set'}
+Citizen's Profile:
+- Name: ${userProfile.fullName || 'Citizen'}
 - Age: ${userProfile.age || 'not set'}
 - Gender: ${userProfile.gender || 'not set'}
 - Occupation: ${userProfile.occupation || 'not set'}
@@ -189,11 +188,11 @@ User's Profile:
 - State: ${userProfile.state || 'not set'}
 - Category: ${userProfile.category || 'not set'}
 
-Always suggest specific schemes by name when relevant. If the user asks about eligibility, check their profile against scheme criteria. Be encouraging and helpful.`;
+Always suggest specific eligible schemes by name. If the user asks about eligibility, you have already pre-validated these schemes for them.`;
 
       const contents = [
         { role: 'user' as const, parts: [{ text: systemPrompt + '\n\nPlease acknowledge and respond to the user.' }] },
-        { role: 'model' as const, parts: [{ text: 'I understand. I am WelfareBot and will help the user with government welfare schemes.' }] },
+        { role: 'model' as const, parts: [{ text: 'I understand. I am SchemeSage Assistant and will help the citizen with government welfare schemes.' }] },
         ...conversationHistory.map(m => ({
           role: (m.role === 'user' ? 'user' : 'model') as 'user' | 'model',
           parts: [{ text: m.content }],
@@ -211,15 +210,12 @@ Always suggest specific schemes by name when relevant. If the user asks about el
   // Fallback
   const lowerMsg = userMessage.toLowerCase();
   if (lowerMsg.includes('eligible') || lowerMsg.includes('eligibility')) {
-    return "Based on your profile, I'd recommend using the **Scheme Finder** tab to filter schemes by your age, income, and category. The filters will show you all schemes you're potentially eligible for. You can also click on any scheme card to see detailed eligibility criteria.";
+    return "Based on your profile, I'd recommend using the Scheme Finder to filter schemes by your age, income, and category. The AI recommendation engine will show you all schemes you're potentially eligible for!";
   }
   if (lowerMsg.includes('apply') || lowerMsg.includes('application')) {
-    return "To apply for a scheme:\n1. Go to the **Scheme Finder** tab and find the scheme\n2. Click **Details** to see the full information\n3. Check the required documents list\n4. Click **Apply Now** to visit the official application portal\n\nMake sure you have all required documents ready before applying!";
+    return "To apply for a scheme:\n1. Find the scheme in the Discover section\n2. Click Details to see the full information\n3. Check the required documents list\n4. Click Apply Now to visit the official application portal\n\nMake sure you have all required documents ready before applying!";
   }
-  if (lowerMsg.includes('document') || lowerMsg.includes('upload')) {
-    return "You can upload your documents in the **Profile** tab. We support Aadhaar Card, Income Certificate, Caste Certificate, and Address Proof. Having these ready will speed up your scheme applications.";
-  }
-  return "I'm here to help you find government welfare schemes! You can ask me about:\n- Which schemes you're eligible for\n- How to apply for a specific scheme\n- What documents you need\n- Details about any scheme\n\nTry asking something like \"What schemes am I eligible for?\" or \"Tell me about PM Kisan\".";
+  return "I'm here to help you find government welfare schemes! Ask me about which schemes you're eligible for, how to apply, or what documents you need.";
 }
 
 export async function summarizeScheme(scheme: Scheme): Promise<string> {
@@ -253,77 +249,217 @@ Return ONLY the summary text, nothing else.`;
   return scheme.description;
 }
 
+// ─── Score Label Helper ───────────────────────────────────────────────────────
+export function getMatchLabel(score: number): string {
+  if (score >= 95) return 'Excellent Match';
+  if (score >= 85) return 'Strong Match';
+  if (score >= 70) return 'Relevant Match';
+  if (score >= 50) return 'Possible Match';
+  return 'Low Match';
+}
+
+// ─── Profile Completeness Engine ─────────────────────────────────────────────
+export function calculateProfileCompleteness(profile: CitizenProfile): {
+  completeness: number;
+  filledFields: string[];
+  missingFields: string[];
+} {
+  const keyFields: Array<{ key: keyof CitizenProfile; label: string }> = [
+    { key: 'age', label: 'Age' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'state', label: 'State' },
+    { key: 'occupation', label: 'Occupation' },
+    { key: 'annualIncome', label: 'Annual Income' },
+    { key: 'category', label: 'Category (SC/ST/OBC/General)' },
+    { key: 'educationLevel', label: 'Education Level' },
+    { key: 'maritalStatus', label: 'Marital Status' },
+    { key: 'ruralUrban', label: 'Area Type (Rural/Urban)' },
+  ];
+
+  const filled: string[] = [];
+  const missing: string[] = [];
+
+  for (const { key, label } of keyFields) {
+    const val = profile[key];
+    const hasValue = val !== null && val !== undefined && val !== '' && val !== 0;
+    if (hasValue) filled.push(label);
+    else missing.push(label);
+  }
+
+  const completeness = Math.round((filled.length / keyFields.length) * 100);
+  return { completeness, filledFields: filled, missingFields: missing };
+}
+
+// ─── Smart Citizen Report ─────────────────────────────────────────────────────
+export interface SmartSchemeMatch {
+  scheme: Scheme;
+  matchScore: number;
+  matchLabel: string;
+  reason: string;
+  whyRecommended: string[];   // Bullet points e.g. ["✓ Telangana Resident", "✓ SC Category"]
+  breakdown: EligibilityDimension[];
+  documents: string[];
+  documentReadiness: number;  // 0-100 based on profile completeness
+}
+
+export interface SmartCitizenReport {
+  profileSummary: string;
+  profileCompleteness: number;
+  recommendationLevel: string;
+  missingFields: string[];
+  topMatches: SmartSchemeMatch[];
+  partialMatches: Array<{
+    scheme: Scheme;
+    matchScore: number;
+    missingCriteria: string;
+  }>;
+  agentEscalation: boolean;
+  generatedAt: string;
+}
+
+export async function generateSmartCitizenReport(
+  userProfile: CitizenProfile,
+  allSchemes: Scheme[]
+): Promise<SmartCitizenReport> {
+  const model = getModel();
+
+  // Step 1: Profile completeness
+  const { completeness, missingFields } = calculateProfileCompleteness(userProfile);
+
+  // Step 2: Score all schemes
+  const allScored = allSchemes.map(s => ({
+    scheme: s,
+    ...scoreWithBreakdown(s, userProfile)
+  }));
+
+  // Step 3: Top matches (score >= 50, above "Do Not Recommend" threshold)
+  const eligible = allScored
+    .filter(({ score }) => score >= 50)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+
+  // Step 4: Partial matches (scored 0 but only failed occupation — near misses)
+  const partialMatches = allScored
+    .filter(({ score }) => score === 0)
+    .filter(({ breakdown }) => {
+      const failed = breakdown.filter(d => !d.pass);
+      return failed.length === 1 && failed[0].label === 'Occupation Eligibility';
+    })
+    .slice(0, 3);
+
+  // Step 5: Build "why recommended" from breakdown (no Gemini needed for this)
+  const buildWhyRecommended = (breakdown: EligibilityDimension[]): string[] => {
+    return breakdown
+      .filter(d => d.pass)
+      .map(d => `✓ ${d.detail.replace(' ✓', '')}`);
+  };
+
+  // Step 6: Document readiness estimate (based on how complete the profile is)
+  const documentReadiness = Math.min(100, Math.round(completeness * 0.8));
+
+  // Step 7: Generate profile summary + per-scheme Gemini reasons (single batch call)
+  let profileSummary = `${userProfile.age ? `${userProfile.age}-year-old` : 'A'} ${userProfile.gender || ''} ${userProfile.occupation || 'citizen'} from ${userProfile.state || 'India'}${userProfile.category ? ` (${userProfile.category})` : ''}.`;
+
+  let schemeReasonMap: Record<string, string> = {};
+
+  if (model && eligible.length > 0) {
+    try {
+      const schemeList = eligible.slice(0, 8).map((e, i) =>
+        `${i + 1}. ID: ${e.scheme.id} | Name: ${e.scheme.name} | Ministry: ${e.scheme.ministry} | Benefits: ${e.scheme.benefits} | Score: ${e.score}/100`
+      ).join('\n');
+
+      const profileDesc = [
+        userProfile.age ? `Age: ${userProfile.age}` : '',
+        userProfile.gender ? `Gender: ${userProfile.gender}` : '',
+        userProfile.state ? `State: ${userProfile.state}` : '',
+        userProfile.occupation ? `Occupation: ${userProfile.occupation}` : '',
+        userProfile.annualIncome ? `Annual Income: ₹${userProfile.annualIncome.toLocaleString('en-IN')}` : '',
+        userProfile.category ? `Category: ${userProfile.category}` : '',
+        userProfile.educationLevel ? `Education: ${userProfile.educationLevel}` : '',
+        userProfile.maritalStatus ? `Marital Status: ${userProfile.maritalStatus}` : '',
+      ].filter(Boolean).join(', ');
+
+      const prompt = `You are a professional Indian Government Welfare Scheme Advisor helping a citizen understand why specific schemes are recommended for them.
+
+Citizen Profile: ${profileDesc}
+
+Recommended Schemes (already passed eligibility screening):
+${schemeList}
+
+Tasks:
+1. Write a warm, professional 2-sentence profile summary for this citizen (what their situation is, what opportunities they have).
+2. For EACH scheme, write a concise 1-sentence explanation of WHY it is specifically recommended for this citizen (mention their specific matching attributes like state, category, occupation, income).
+
+Return ONLY valid JSON:
+{
+  "profileSummary": "<2 sentence warm summary>",
+  "reasons": {
+    "<schemeId1>": "<1 sentence why recommended for this specific citizen>",
+    "<schemeId2>": "<1 sentence why recommended for this specific citizen>"
+  }
+}`;
+
+      const result = await model.generateContent(prompt);
+      let text = result.response.text().trim();
+      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+      const parsed = JSON.parse(text);
+
+      if (parsed.profileSummary) profileSummary = parsed.profileSummary;
+      if (parsed.reasons) schemeReasonMap = parsed.reasons;
+
+    } catch (err) {
+      console.warn('[Smart Report Gemini Error]:', (err as Error).message);
+    }
+  }
+
+  // Step 8: Assemble final report
+  const topMatches: SmartSchemeMatch[] = eligible.slice(0, 8).map(({ scheme, score, breakdown }) => ({
+    scheme,
+    matchScore: score,
+    matchLabel: getMatchLabel(score),
+    reason: schemeReasonMap[scheme.id] || generateFallbackReason(scheme, userProfile),
+    whyRecommended: buildWhyRecommended(breakdown),
+    breakdown,
+    documents: scheme.documents || [],
+    documentReadiness,
+  }));
+
+  let recommendationLevel = "Level 1";
+  const filledCount = calculateProfileCompleteness(userProfile).filledFields.length;
+  if (filledCount >= 4) recommendationLevel = "Level 3";
+  else if (filledCount >= 2) recommendationLevel = "Level 2";
+  if (filledCount >= 7) recommendationLevel = "Level 4";
+
+  return {
+    profileSummary,
+    profileCompleteness: completeness,
+    recommendationLevel,
+    missingFields,
+    topMatches,
+    partialMatches: partialMatches.map(({ scheme, breakdown }) => ({
+      scheme,
+      matchScore: 0,
+      missingCriteria: breakdown.find(d => !d.pass)?.detail || 'Some criteria do not match',
+    })),
+    agentEscalation: completeness < 60 || topMatches.length === 0,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export async function checkEligibility(
   userProfile: Partial<User>,
   scheme: Scheme
 ): Promise<EligibilityResult> {
-  const model = getModel();
+  // Always run the rule-based engine first for ground truth
+  const { score, breakdown } = scoreWithBreakdown(scheme, userProfile);
 
-  if (model) {
-    try {
-      const prompt = `Analyze whether this citizen is eligible for this Indian government scheme. Return ONLY a JSON object.
-
-Citizen Profile:
-- Age: ${userProfile.age || 'not specified'}
-- Gender: ${userProfile.gender || 'not specified'}
-- Occupation: ${userProfile.occupation || 'not specified'}
-- Annual Income: ₹${userProfile.annualIncome || 'not specified'}
-- State: ${userProfile.state || 'not specified'}
-- Category: ${userProfile.category || 'not specified'}
-
-Scheme: ${scheme.name}
-Eligibility Criteria:
-- Min Age: ${scheme.eligibility.minAge || 'none'}
-- Max Age: ${scheme.eligibility.maxAge || 'none'}
-- Max Income: ₹${scheme.eligibility.maxIncome || 'no limit'}
-- Gender: ${scheme.eligibility.gender || 'all'}
-- Categories: ${(scheme.eligibility.categories || []).join(', ') || 'all'}
-- Occupations: ${(scheme.eligibility.occupations || []).join(', ') || 'all'}
-
-Return ONLY this JSON:
-{"eligible": true/false, "confidence": "high"/"medium"/"low", "explanation": "1-2 sentence explanation"}`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]) as EligibilityResult;
-      }
-    } catch (err) {
-      console.warn('[GEMINI] Eligibility check failed, using fallback:', (err as Error).message);
-    }
-  }
-
-  // Fallback: rule-based
-  return ruleBasedEligibility(userProfile, scheme);
-}
-
-function ruleBasedEligibility(user: Partial<User>, scheme: Scheme): EligibilityResult {
-  const e = scheme.eligibility;
-  const issues: string[] = [];
-
-  if (user.age && e.minAge && user.age < e.minAge) issues.push(`minimum age is ${e.minAge}`);
-  if (user.age && e.maxAge && user.age > e.maxAge) issues.push(`maximum age is ${e.maxAge}`);
-  if (user.gender && e.gender && e.gender !== 'all' && e.gender !== user.gender) issues.push(`only for ${e.gender} applicants`);
-  if (user.annualIncome && e.maxIncome && user.annualIncome > e.maxIncome) issues.push(`income must be below ₹${e.maxIncome.toLocaleString()}`);
-  if (user.category && e.categories?.length && !e.categories.some(c => c.toLowerCase() === user.category!.toLowerCase())) {
-    issues.push(`only for ${e.categories.join(', ')} categories`);
-  }
-  if (user.occupation && e.occupations?.length && !e.occupations.some(o => o.toLowerCase() === user.occupation!.toLowerCase())) {
-    issues.push(`primarily for ${e.occupations.join(', ')}`);
-  }
-
-  if (issues.length === 0) {
-    return {
-      eligible: true,
-      confidence: user.age && user.gender && user.occupation ? 'high' : 'medium',
-      explanation: `Based on your profile, you appear to meet all the eligibility criteria for ${scheme.name}. You can proceed with your application.`,
-    };
-  }
-
+  // Return rule-based eligibility result directly without Gemini
   return {
-    eligible: false,
-    confidence: 'high',
-    explanation: `You may not be eligible because: ${issues.join('; ')}. Please verify with the official portal.`,
+    eligible: score > 20,
+    confidence: score > 60 ? 'high' : score > 30 ? 'medium' : 'low',
+    explanation: score > 20
+      ? `Based on your profile, you meet the key eligibility criteria for ${scheme.name}.`
+      : `You do not meet the eligibility requirements. Check the breakdown below for details.`,
+    breakdown,
   };
 }

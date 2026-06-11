@@ -11,66 +11,26 @@ import {
 } from '../models/index.js';
 import { db } from '../config/db.js';
 import crypto from 'crypto';
+import { getGovernmentStats, invalidateAnalyticsCache } from '../services/analytics.service.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
 router.use(authMiddleware);
 router.use(roleGuard('government', 'admin'));
 
-router.get('/analytics', async (_req: AuthRequest, res: Response) => {
+router.get('/analytics', async (req: AuthRequest, res: Response) => {
   try {
-    const allSchemes = await SchemeModel.find({});
-    const allApps = await ApplicationModel.find({});
-    const allUsers = await UserModel.find({ role: 'citizen' });
-
-    // Scheme-wise applications
-    const schemeWiseApplications = allSchemes.map((s: any) => ({
-      name: s.name.length > 20 ? s.name.substring(0, 20) + '...' : s.name,
-      fullName: s.name,
-      applications: allApps.filter((a: any) => a.schemeId === s.id).length,
-      views: s.views,
-      saves: s.saves,
-    }));
-
-    // Status breakdown
-    const statusBreakdown = [
-      { name: 'Saved', value: allApps.filter((a: any) => a.status === 'saved').length || 0 },
-      { name: 'Started', value: allApps.filter((a: any) => a.status === 'started').length || 0 },
-      { name: 'Submitted', value: allApps.filter((a: any) => a.status === 'submitted').length || 0 },
-      { name: 'Approved', value: allApps.filter((a: any) => a.status === 'approved').length || 0 },
-      { name: 'Rejected', value: allApps.filter((a: any) => a.status === 'rejected').length || 0 },
-    ];
-
-    // State-wise distribution
-    const stateCounts: Record<string, number> = {};
-    allUsers.forEach((u: any) => {
-      if (u.state) {
-        stateCounts[u.state] = (stateCounts[u.state] || 0) + 1;
+    let govState = undefined;
+    if (req.user?.role === 'government') {
+      if (req.user.state && req.user.state !== 'Central' && req.user.state !== 'All' && req.user.state !== 'UNASSIGNED') {
+        govState = req.user.state;
       }
-    });
-    const stateWiseDistribution = Object.entries(stateCounts).map(([name, value]) => ({ name, value }));
-    
-    // Monthly trends (Last 6 months)
-    const monthlyTrends = [
-      { month: 'Nov', applications: 120, views: 8500 },
-      { month: 'Dec', applications: 180, views: 12000 },
-      { month: 'Jan', applications: 250, views: 15000 },
-      { month: 'Feb', applications: 310, views: 18500 },
-      { month: 'Mar', applications: 420, views: 22000 },
-      { month: 'Apr', applications: 380, views: 20000 },
-    ];
-
-    res.json({
-      schemeWiseApplications,
-      statusBreakdown,
-      stateWiseDistribution,
-      monthlyTrends,
-      totalViews: allSchemes.reduce((sum: number, s: any) => sum + (s.views || 0), 0),
-      totalSaves: allSchemes.reduce((sum: number, s: any) => sum + (s.saves || 0), 0),
-      totalSchemes: allSchemes.length,
-      totalApplications: allApps.length,
-    });
-  } catch (error) {
+    }
+    const stats = await getGovernmentStats(govState);
+    res.json(stats);
+  } catch (error: any) {
+    logger.error('[GovRoute] analytics failed', { error: error.message });
     res.status(500).json({ error: 'Server Error' });
   }
 });
@@ -80,12 +40,19 @@ router.get('/analytics', async (_req: AuthRequest, res: Response) => {
 // GET /government/pending-agents — list all agents awaiting approval
 router.get('/pending-agents', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.user?.role !== 'government') return res.status(403).json({ error: 'Access restricted' });
-    const snapshot = await db.collection('pending_registrations')
-      .where('status', '==', 'pending')
-      .get();
+    if (req.user?.role !== 'government' && req.user?.role !== 'admin') return res.status(403).json({ error: 'Access restricted' });
+    let query: any = db.collection('pending_registrations').where('status', '==', 'pending');
+    
+    // Send new agent request to their state governments only
+    if (req.user?.role === 'government') {
+      if (req.user.state && req.user.state !== 'Central' && req.user.state !== 'All' && req.user.state !== 'UNASSIGNED') {
+        query = query.where('state', '==', req.user.state);
+      }
+    }
+    
+    const snapshot = await query.get();
     const pending = snapshot.docs
-      .map((d: any) => { const { password, ...u } = d.data(); return u; })
+      .map((d: any) => { const { password, ...u } = d.data(); return { id: d.id, ...u }; })
       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     res.json(pending);
   } catch (e: any) {
@@ -97,8 +64,16 @@ router.get('/pending-agents', async (req: AuthRequest, res: Response) => {
 // POST /government/resolve-agent-status — approve or reject an agent
 router.post('/resolve-agent-status', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.user?.role !== 'government') return res.status(403).json({ error: 'Access restricted' });
+    if (req.user?.role !== 'government' && req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Access restricted' });
+    }
     const { userId, status } = req.body;
+    console.log(`[resolve-agent-status] userId: ${userId}, status: ${status}`);
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    
     if (!['active', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status.' });
 
     // Fetch the pending registration record
@@ -158,21 +133,29 @@ router.post('/resolve-agent-status', async (req: AuthRequest, res: Response) => 
 
     res.json({ success: true, message: 'Agent approved. Firebase account created.' });
   } catch (e: any) {
-    console.error('[resolve-agent-status error]', e.message);
-    res.status(500).json({ error: 'Server Error' });
+    console.error('[resolve-agent-status error]', e.stack || e.message);
+    res.status(500).json({ error: e.message || 'Server Error' });
   }
 });
 
 // GET /government/active-agents — list all approved agents
 router.get('/active-agents', async (req: AuthRequest, res: Response) => {
   try {
-    if (req.user?.role !== 'government') return res.status(403).json({ error: 'Access restricted' });
-    const snapshot = await db.collection('users')
+    if (req.user?.role !== 'government' && req.user?.role !== 'admin') return res.status(403).json({ error: 'Access restricted' });
+    let query: any = db.collection('users')
       .where('role', 'in', ['admin', 'agent'])
-      .where('status', '==', 'active')
-      .get();
+      .where('status', '==', 'active');
+      
+    // List only active agents from the same state for state-level government users
+    if (req.user?.role === 'government') {
+      if (req.user.state && req.user.state !== 'Central' && req.user.state !== 'All' && req.user.state !== 'UNASSIGNED') {
+        query = query.where('state', '==', req.user.state);
+      }
+    }
+    
+    const snapshot = await query.get();
     const active = snapshot.docs
-      .map((d: any) => { const { password, ...u } = d.data(); return u; })
+      .map((d: any) => { const { password, ...u } = d.data(); return { id: d.id, ...u }; })
       .sort((a: any, b: any) => a.fullName?.localeCompare(b.fullName));
     res.json(active);
   } catch (e: any) {
@@ -262,6 +245,13 @@ router.get('/applications', async (req: AuthRequest, res: Response) => {
       };
     }));
 
+    // Filter by Official's Jurisdiction
+    if (req.user?.role === 'government') {
+      if (req.user.state && req.user.state !== 'Central' && req.user.state !== 'All' && req.user.state !== 'UNASSIGNED') {
+        apps = apps.filter(a => a.userState === req.user.state);
+      }
+    }
+
     const { scheme, status, state, dateFrom, dateTo } = req.query as any;
     if (scheme) apps = apps.filter(a => a.schemeId === scheme || a.schemeName.toLowerCase().includes(scheme.toLowerCase()));
     if (status) apps = apps.filter(a => a.status === status);
@@ -322,18 +312,24 @@ router.post('/publish-scheme', async (req: AuthRequest, res: Response) => {
 
     // Create a notification for all citizens about the new scheme
     await import('../models/index.js').then(async ({ NotificationModel, UserModel: UM }) => {
-      const citizens = await UM.find({ role: 'citizen' }).select('id').lean();
+      // FIX: Removed Mongoose-only .select('id').lean() — using plain find() instead
+      const citizens = await UM.find({ role: 'citizen' });
       const notifications = citizens.map((c: any) => ({
         id: crypto.randomUUID(),
         userId: c.id,
         title: '🆕 New Scheme Available',
         message: `A new scheme has been published: "${name}" by ${ministry}. Check it out now!`,
         type: 'new_scheme',
+        read: false,
+        createdAt: new Date().toISOString(),
       }));
       if (notifications.length > 0) {
         await NotificationModel.insertMany(notifications);
       }
     });
+
+    // Invalidate analytics cache
+    invalidateAnalyticsCache();
 
     // Audit log
     await AuditLogModel.create({
@@ -427,6 +423,7 @@ router.delete('/schemes/:id', async (req: AuthRequest, res: Response) => {
     });
 
     res.json({ success: true, message: `Successfully removed ${modelType} scheme and all associated data.` });
+    invalidateAnalyticsCache();
   } catch (error) {
     console.error('[Delete Scheme Error]', error);
     res.status(500).json({ error: 'Failed to delete scheme.' });

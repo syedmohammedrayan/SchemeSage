@@ -11,9 +11,43 @@ export interface User {
   gender?: 'male' | 'female' | 'other';
   occupation?: string;
   annualIncome?: number;
-  category?: 'General' | 'OBC' | 'SC' | 'ST' | 'EWS';
+  category?: 'General' | 'OBC' | 'SC' | 'ST' | 'EWS' | 'Minority';
+  minority?: boolean;
+  disability?: boolean;
+  maritalStatus?: 'single' | 'married' | 'widow' | 'divorced' | 'widower';
+  ruralUrban?: 'rural' | 'urban';
+  educationLevel?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EligibilityDimension {
+  /** Hard reject: does not pass */
+  pass: boolean;
+  /** The dimension name shown in UI */
+  label: string;
+  /** Short explanation e.g. "Telangana resident ✓" */
+  detail: string;
+}
+
+export interface SchemeEligibility {
+  minAge?: number;
+  maxAge?: number;
+  maxIncome?: number;
+  gender?: 'male' | 'female' | 'all';
+  categories?: string[];
+  occupations?: string[];
+  states?: string[];
+  /** e.g. ['graduate', 'postgraduate', 'technical', '10th pass', 'any'] */
+  educationLevels?: string[];
+  /** true = scheme is exclusively for disabled citizens */
+  disabilityRequired?: boolean;
+  /** true = scheme is exclusively for minority citizens */
+  minorityRequired?: boolean;
+  /** e.g. 'rural' | 'urban' | 'both' */
+  ruralUrban?: 'rural' | 'urban' | 'both';
+  /** e.g. ['widow', 'single', 'married', 'divorced'] */
+  maritalStatus?: string[];
 }
 
 export interface Scheme {
@@ -22,15 +56,7 @@ export interface Scheme {
   ministry: string;
   description: string;
   benefits: string;
-  eligibility: {
-    minAge?: number;
-    maxAge?: number;
-    maxIncome?: number;
-    gender?: 'male' | 'female' | 'all';
-    categories?: string[];
-    occupations?: string[];
-    states?: string[];
-  };
+  eligibility: SchemeEligibility;
   documents: string[];
   deadline?: string;
   applyLink: string;
@@ -38,6 +64,11 @@ export interface Scheme {
   views: number;
   saves: number;
   createdAt: string;
+}
+
+export interface ScoredScheme extends Scheme {
+  matchScore: number;
+  eligibilityBreakdown: EligibilityDimension[];
 }
 
 export interface SavedScheme {
@@ -90,12 +121,48 @@ export interface AIRecommendation {
   schemeId: string;
   matchScore: number;
   reason: string;
+  breakdown?: EligibilityDimension[];
 }
 
 export interface EligibilityResult {
   eligible: boolean;
   confidence: 'high' | 'medium' | 'low';
   explanation: string;
+  breakdown?: EligibilityDimension[];
+}
+
+export interface CitizenProfile {
+  age?: number;
+  gender?: string;
+  state?: string;
+  district?: string;
+  occupation?: string;
+  annualIncome?: number;
+  category?: string;
+  minority?: boolean;
+  disability?: boolean;
+  maritalStatus?: string;
+  ruralUrban?: string;
+  educationLevel?: string;
+  fullName?: string;
+}
+
+export interface CitizenReport {
+  profile: CitizenProfile;
+  profileSummary: string;
+  topMatches: Array<{
+    scheme: Scheme;
+    matchScore: number;
+    reason: string;
+    breakdown: EligibilityDimension[];
+    documents: string[];
+  }>;
+  partialMatches: Array<{
+    scheme: Scheme;
+    matchScore: number;
+    missingCriteria: string;
+  }>;
+  generatedAt: string;
 }
 
 export interface Agent {
@@ -115,4 +182,5 @@ export interface AgentRequest {
   message: string;
   status: 'pending' | 'accepted' | 'resolved';
   createdAt: string;
+  state?: string;
 }

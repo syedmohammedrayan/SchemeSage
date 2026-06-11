@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { categories, occupations, indianStates } from "@/data/schemes";
-import { Search, User, FileText, Bell, Bookmark, BarChart3, LogOut, Shield, Upload, Trash2, CheckCircle, Phone, MapPin, Send, Star } from "lucide-react";
+import { Search, User, FileText, Bell, Bookmark, BarChart3, LogOut, Shield, Upload, Trash2, CheckCircle, Phone, MapPin, Send, Star, Edit } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchemes, useSavedSchemes, useSaveScheme } from "@/hooks/useSchemes";
@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 
 const CitizenDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -65,9 +65,48 @@ const CitizenDashboard = () => {
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [selectedLang, setSelectedLang] = useState("en-IN");
 
-  // Profile edit
+  // Profile edit — FIX: was declared but never rendered or saved
   const [editProfile, setEditProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState<any>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState<any>({
+    fullName: user?.fullName || '',
+    mobile: user?.mobile || '',
+    address: user?.address || '',
+    state: user?.state || '',
+    district: user?.district || '',
+  });
+
+  // Sync profileForm when user data loads
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        fullName: user.fullName || '',
+        mobile: user.mobile || '',
+        address: user.address || '',
+        state: user.state || '',
+        district: user.district || '',
+      });
+    }
+  }, [user?.id]);
+
+  const handleSaveProfile = async () => {
+    if (!profileForm.fullName) {
+      toast({ title: 'Name is required', variant: 'destructive' });
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const data = await api.patch<{ user: any }>('/auth/profile', profileForm);
+      // refreshUser is available from useAuth — sync context
+      await refreshUser();
+      toast({ title: '✅ Profile updated successfully!' });
+      setEditProfile(false);
+    } catch (err: any) {
+      toast({ title: 'Update failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   // Queries
   const { data: schemes = [], isLoading: schemesLoading } = useSchemes(
@@ -138,6 +177,48 @@ const CitizenDashboard = () => {
 
   return (
     <div className="min-h-screen bg-muted/30">
+      {/* Profile Edit Modal */}
+      <Dialog open={editProfile} onOpenChange={setEditProfile}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <User className="h-5 w-5 text-accent" /> Edit Profile
+            </DialogTitle>
+            <DialogDescription>Update your personal information. Changes are saved to your account.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1">
+              <Label htmlFor="pf-name">Full Name *</Label>
+              <Input id="pf-name" value={profileForm?.fullName || ''} onChange={e => setProfileForm((p: any) => ({...p, fullName: e.target.value}))} placeholder="Your full name" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pf-mobile">Mobile Number</Label>
+              <Input id="pf-mobile" value={profileForm?.mobile || ''} onChange={e => setProfileForm((p: any) => ({...p, mobile: e.target.value}))} placeholder="10-digit mobile number" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pf-state">State</Label>
+              <Select value={profileForm?.state || ''} onValueChange={v => setProfileForm((p: any) => ({...p, state: v}))}>
+                <SelectTrigger id="pf-state"><SelectValue placeholder="Select state" /></SelectTrigger>
+                <SelectContent>
+                  {indianStates.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pf-district">District</Label>
+              <Input id="pf-district" value={profileForm?.district || ''} onChange={e => setProfileForm((p: any) => ({...p, district: e.target.value}))} placeholder="Your district" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pf-address">Address</Label>
+              <Textarea id="pf-address" value={profileForm?.address || ''} onChange={e => setProfileForm((p: any) => ({...p, address: e.target.value}))} placeholder="Full address" rows={2} />
+            </div>
+          </div>
+          <Button onClick={handleSaveProfile} disabled={savingProfile} className="w-full">
+            {savingProfile ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {/* Top bar */}
       <header className="bg-slate-900 border-b border-white/10 sticky top-0 z-40 text-white shadow-xl">
         <div className="container mx-auto flex items-center justify-between h-16 px-4">

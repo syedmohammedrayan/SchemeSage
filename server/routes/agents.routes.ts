@@ -48,7 +48,25 @@ router.get("/all-requests", authMiddleware, async (req: AuthRequest, res: Respon
     if (req.user?.role !== 'admin' && req.user?.role !== 'government' && req.user?.role !== 'agent') {
       return res.status(403).json({ error: "Unauthorized access to Help Centre pool" });
     }
-    const requests = await AgentRequestModel.find().sort({ createdAt: -1 });
+    let requests = await AgentRequestModel.find().sort({ createdAt: -1 });
+    
+    // If the user is an agent and has a state set, filter requests by that state
+    // Admins and Government can see all states
+    if (req.user?.role === 'agent' && req.user?.state) {
+      requests = requests.filter((r: any) => 
+        r.state && r.state.toLowerCase() === req.user?.state.toLowerCase()
+      );
+    }
+    
+    // Filter out expired pending requests
+    const now = new Date().toISOString();
+    requests = requests.filter((r: any) => {
+      if (r.status === 'pending' && r.expiresAt && r.expiresAt < now) {
+        return false;
+      }
+      return true;
+    });
+    
     res.json(requests);
   } catch (e) {
     res.status(500).json({ error: 'Server Error' });
@@ -63,7 +81,11 @@ router.post("/request", optionalAuthMiddleware, async (req: AuthRequest, res) =>
       id: crypto.randomUUID(),
       userId: req.userId || 'guest',
       agentId: req.body.agentId || 'all',
-      message: req.body.message || `Requested expert assistance for scheme: ${req.body.schemeName || 'Unknown'}`
+      assignedAgentId: null,
+      status: 'pending',
+      state: req.body.state || null,
+      message: req.body.message || `Requested expert assistance for scheme: ${req.body.schemeName || 'Unknown'}`,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     };
 
     console.log("[Help Request] Creating lead:", payload.userName, "for", payload.schemeName);
@@ -96,6 +118,50 @@ router.get("/requests/:agentId", authMiddleware, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Server Error' });
   }
+});
+
+// Update request status (accept, complete, reject)
+router.patch("/request/:id/status", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status } = req.body;
+    const requestId = req.params.id;
+    
+    // Only agents/admins can update request statuses
+    if (req.user?.role !== 'agent' && req.user?.role !== 'admin') {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    const payload: any = { status };
+    if (status === 'accepted') {
+      payload.assignedAgentId = req.user?.id;
+    }
+
+    const updated = await AgentRequestModel.findOneAndUpdate(
+      { id: requestId },
+      payload,
+      { returnDocument: 'after' }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    res.json(updated);
+  } catch (e: any) {
+    console.error("[Help Request Update Error]", e.message || e);
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+// Get Agent Earnings
+router.get("/earnings", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { getAgentEarnings } = await import('../services/commission.service.js');
+        const earnings = await getAgentEarnings(req.userId!);
+        res.json(earnings);
+    } catch(e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // RESTRICTED TO GOVERNMENT: Delete an agent completely from website and database

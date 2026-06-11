@@ -27,10 +27,10 @@ router.put('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     // Base fields any user can update
     const baseFields = ['fullName', 'mobile', 'address', 'avatarUrl'];
 
-    // Agent/Admin extra fields
+    // Agent/Admin/Government extra fields
     const agentFields = ['state', 'district', 'expertise'];
 
-    const allowedFields = role === 'admin' || role === 'agent'
+    const allowedFields = (role === 'admin' || role === 'agent' || role === 'government')
       ? [...baseFields, ...agentFields]
       : baseFields;
 

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '@/lib/api';
+import { auth as firebaseAuth } from '@/lib/firebase';
+import { signInWithPopup, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 
 interface UserProfile {
   id: string;
@@ -45,6 +47,7 @@ interface AuthContextType {
     address?: string;
     expertise?: string;
   }) => Promise<UserProfile>;
+  loginWithGoogle: () => Promise<UserProfile>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   setUser: (user: UserProfile | null) => void;
@@ -58,18 +61,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      api.get<{ user: UserProfile }>('/auth/me')
-        .then(data => setUser(data.user))
-        .catch(() => {
-          localStorage.removeItem('token');
-          setToken(null);
-          setUser(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    // First, check if there was a redirect login
+    getRedirectResult(firebaseAuth).then(async (result) => {
+      if (result && result.user) {
+        const idToken = await result.user.getIdToken();
+        const data = await api.post<{ token: string; user: UserProfile }>('/auth/google', {
+          displayName: result.user.displayName,
+          photoURL: result.user.photoURL,
+        }, {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+        localStorage.setItem('token', data.token);
+        setToken(data.token);
+        setUser(data.user);
+      }
+    }).catch(console.error).finally(() => {
+      if (token) {
+        api.get<{ user: UserProfile }>('/auth/me')
+          .then(data => setUser(data.user))
+          .catch(() => {
+            localStorage.removeItem('token');
+            setToken(null);
+            setUser(null);
+          })
+          .finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    });
   }, []);
 
   const login = async (email: string, password: string, loginRole?: string) => {
@@ -116,10 +135,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
+  const loginWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('email');
+      
+      let result;
+      try {
+        result = await signInWithPopup(firebaseAuth, provider);
+      } catch (err: any) {
+        if (err.code === 'auth/popup-blocked') {
+          await signInWithRedirect(firebaseAuth, provider);
+          return null as any; // Execution stops here, page redirects
+        }
+        throw err;
+      }
+
+      const idToken = await result.user.getIdToken();
+      
+      const data = await api.post<{ token: string; user: UserProfile }>('/auth/google', {
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL,
+      }, {
+        headers: { Authorization: `Bearer ${idToken}` } // Send it specifically for this request
+      });
+
+      localStorage.setItem('token', data.token);
+      setToken(data.token);
+      setUser(data.user);
+      return data.user;
+    } catch (error) {
+      console.error('Google Login Error:', error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await firebaseAuth.signOut();
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   const refreshUser = async () => {
@@ -139,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!user,
       login,
       register,
+      loginWithGoogle,
       logout,
       refreshUser,
       setUser,

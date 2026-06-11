@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Shield, LogOut, CheckCircle, XCircle, PlayCircle, FileText, Landmark, User, LayoutDashboard, MessageSquare, Phone, Calendar, LifeBuoy, Search } from "lucide-react";
+import { Shield, LogOut, CheckCircle, XCircle, PlayCircle, FileText, Landmark, User, LayoutDashboard, MessageSquare, Phone, Calendar, LifeBuoy, Search, Wallet, IndianRupee, TrendingUp, AlertCircle, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,19 +21,33 @@ const AgentDashboard = () => {
   const [scraped, setScraped] = useState<any>(null);
   const [scraping, setScraping] = useState(false);
   const [govSchemes, setGovSchemes] = useState<any[]>([]);
+  
+  const [subStatus, setSubStatus] = useState<any>(null);
+  const [wallet, setWallet] = useState<any>({ availableBalance: 0, pendingEarnings: 0, totalEarned: 0 });
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [earnings, setEarnings] = useState<any[]>([]);
 
-  const agentId = user?.id || "agent-1"; 
-
-  const handleLogout = () => {
-    logout();
-    navigate("/");
-  };
+  // FIX: Removed dangerous 'agent-1' fallback ID.
+  // If user is not authenticated, redirect to login immediately.
   useEffect(() => {
+    if (!user?.id) {
+      navigate('/login', { replace: true });
+      return;
+    }
     fetchApplications();
     fetchHelpRequests();
     fetchScrapedData();
     fetchGovSchemes();
-  }, []);
+    fetchOverviewData();
+  }, [user?.id]);
+
+  // Safe: only reached after auth guard confirms user exists
+  const agentId = user?.id ?? '';
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const fetchScrapedData = async () => {
     try {
@@ -70,6 +84,32 @@ const AgentDashboard = () => {
       .catch(console.error);
   };
 
+  const fetchOverviewData = async () => {
+      try {
+          const sub = await api.get<any>('/subscription/status');
+          setSubStatus(sub);
+
+          const wData = await api.get<any>('/agents/earnings');
+          setWallet(wData);
+
+          const wdData = await api.get<any>('/withdrawal/history');
+          setWithdrawals(wdData.withdrawals || []);
+      } catch (e) {
+          console.error("Failed to load overview data", e);
+      }
+  };
+
+  const requestWithdrawal = async () => {
+      try {
+          // Just request all available for MVP
+          await api.post('/withdrawal/request', { amount: wallet.pendingEarnings, method: 'UPI' });
+          toast({ title: "Withdrawal Requested", description: "Your request has been submitted for approval." });
+          fetchOverviewData();
+      } catch(e: any) {
+          toast({ title: "Request Failed", description: e.message, variant: "destructive" });
+      }
+  };
+
   const updateStatus = async (applicationId: string, status: string) => {
     try {
       await api.patch(`/agent/update-status/${applicationId}`, { status });
@@ -77,6 +117,16 @@ const AgentDashboard = () => {
       fetchApplications();
     } catch (e) {
       toast({ title: "Failed to update status", variant: "destructive" });
+    }
+  };
+
+  const updateRequestStatus = async (id: string, status: string) => {
+    try {
+      await api.patch(`/agents/request/${id}/status`, { status });
+      toast({ title: `Lead marked as ${status.toUpperCase()}` });
+      fetchHelpRequests();
+    } catch (e) {
+      toast({ title: "Failed to update request", variant: "destructive" });
     }
   };
 
@@ -114,31 +164,42 @@ const AgentDashboard = () => {
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
+  const pendingLeads = helpRequests.filter(req => req.status === 'pending' || !req.status);
+  const activeCases = helpRequests.filter(req => req.status === 'accepted' && req.assignedAgentId === agentId);
+
   return (
-    <div className="min-h-screen bg-[#020617] text-white">
-      <header className="border-b border-white/10 bg-slate-900/80 flex items-center h-20 px-6 sticky top-0 z-50 backdrop-blur-xl">
-        <div className="container mx-auto flex items-center justify-between h-full">
-          <Link to="/" className="flex items-center gap-3">
-            <Shield className="h-8 w-8 text-accent" />
-            <span className="font-heading font-black text-xl tracking-tight uppercase">Agent Portal</span>
-          </Link>
-          <div className="flex items-center gap-6">
-              <Badge variant="outline" className="hidden md:flex border-success text-success bg-success/10 font-black tracking-widest uppercase text-[10px] px-3 py-1 mr-2">Online</Badge>
-              
+    <div className="min-h-screen bg-[#020617] selection:bg-accent/30 selection:text-white">
+      {/* Sleek Enterprise Header */}
+      <header className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+           <Link to="/agent-dashboard" className="flex items-center gap-2 group">
+              <div className="h-8 w-8 rounded-lg bg-accent/20 flex items-center justify-center group-hover:bg-accent transition-colors">
+                <Shield className="h-4 w-4 text-accent group-hover:text-white transition-colors" />
+              </div>
+              <span className="font-heading font-black text-xl text-white tracking-tighter">
+                SCHEMESAGE<span className="text-accent">.GOV</span>
+              </span>
+           </Link>
+
+           <div className="flex items-center gap-4">
+              <Badge variant="outline" className="hidden sm:flex border-accent/20 text-accent font-black tracking-widest text-[9px] uppercase px-3 py-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse mr-2"></span>
+                Secure Uplink Active
+              </Badge>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <div className="flex items-center gap-4 hover:bg-white/5 p-2 rounded-2xl transition-all border border-transparent hover:border-white/10 cursor-pointer group">
-                    <div className="text-right hidden sm:block">
-                       <p className="text-[10px] font-black uppercase text-accent leading-tight tracking-[0.2em]">Active Agent</p>
-                       <p className="text-sm font-black text-white group-hover:text-white">{user?.fullName}</p>
-                    </div>
-                    <Avatar className="h-10 w-10 border-2 border-success/50">
-                      <AvatarImage src={user?.avatarUrl} className="object-cover" />
-                      <AvatarFallback className="bg-slate-800 text-[12px] font-black text-white">{user?.fullName?.charAt(0)}</AvatarFallback>
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-white/5 border border-white/10">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.fullName || "Agent"}&backgroundColor=0f172a&textColor=38bdf8`} />
+                      <AvatarFallback className="bg-slate-800 text-xs">{user?.fullName?.charAt(0) || "A"}</AvatarFallback>
                     </Avatar>
-                  </div>
+                  </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-white/10 text-white p-2">
+                <DropdownMenuContent className="w-56 bg-slate-900 border-white/10 text-white p-2" align="end">
+                  <div className="px-2 py-3 border-b border-white/10 mb-2">
+                    <p className="text-sm font-black tracking-tight">{user?.fullName}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">UID: {user?.id?.substring(0,8)}</p>
+                  </div>
                   <DropdownMenuItem className="focus:bg-white/10 focus:text-white cursor-pointer py-3 rounded-xl" onClick={() => navigate('/profile')}>
                     <FileText className="mr-3 h-4 w-4 text-accent" />
                     <span className="font-bold">My Profile</span>
@@ -164,145 +225,163 @@ const AgentDashboard = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="pool" className="space-y-6">
-          <TabsList className="bg-slate-900 border border-white/20 p-1 h-14 w-full flex">
-            <TabsTrigger value="pool" className="flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="bg-slate-900 border border-white/20 p-1 h-14 w-full flex overflow-x-auto overflow-y-hidden">
+            <TabsTrigger value="overview" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="pool" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
               Application Pool
               {poolApps.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center animate-pulse">{poolApps.length}</span>}
             </TabsTrigger>
-            <TabsTrigger value="active" className="flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">My Active Queue ({activeApps.length})</TabsTrigger>
-            <TabsTrigger value="assistance" className="flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
-              <LifeBuoy className="h-4 w-4 mr-1" /> Help Centre
-              {helpRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center">{helpRequests.length}</span>}
+            <TabsTrigger value="active" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">My Queue ({activeApps.length})</TabsTrigger>
+            <TabsTrigger value="wallet" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
+              Wallet
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">My Archive</TabsTrigger>
-            <TabsTrigger value="scraper" className="flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
-              <Search className="h-4 w-4 mr-1" /> Scraper
+            <TabsTrigger value="assistance" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
+              Help Centre
+              {(pendingLeads.length + activeCases.length) > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center">{pendingLeads.length + activeCases.length}</span>}
             </TabsTrigger>
+            <TabsTrigger value="history" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">Archive</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="scraper">
-            <Card className="bg-slate-900 border-white/10 shadow-2xl overflow-hidden">
-              <div className="h-1 bg-accent" />
-              <CardHeader>
-                <div>
-                  <CardTitle className="font-heading text-xl font-black text-white uppercase tracking-tight">AI Discovery Agent</CardTitle>
-                  <p className="text-xs text-slate-500 font-bold tracking-widest mt-1">Discover schemes from any central or state portal</p>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Discovery Target (URL or Query)</label>
-                  <input 
-                    type="text"
-                    id="agent-scraper-url"
-                    placeholder="URL or query, e.g. 'Bihar women welfare schemes'"
-                    defaultValue="https://www.india.gov.in/my-government/schemes"
-                    className="w-full bg-white/5 border border-white/10 text-white placeholder:text-slate-600 rounded-xl h-12 px-4 text-sm"
-                  />
-                </div>
-                <Button 
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-black rounded-xl h-12"
-                  onClick={async () => {
-                    const url = (document.getElementById('agent-scraper-url') as HTMLInputElement)?.value;
-                    setScraping(true);
-                    try {
-                      toast({ title: "Agent Dispatched", description: "Browser Use Cloud session started..." });
-                      const res = await api.post<any>('/scrape/managed', { url });
-                      toast({ title: "Sync Complete", description: `Discovered ${res.count} schemes.` });
-                      fetchScrapedData();
-                    } catch (err: any) {
-                      const errorMsg = err.details || err.message || "External session limit reached or portal offline.";
-                      toast({ 
-                        title: "Agent Busy / Error", 
-                        description: errorMsg, 
-                        variant: "destructive" 
-                      });
-                    } finally {
-                      setScraping(false);
-                    }
-                  }}
-                  disabled={scraping}
-                >
-                  {scraping ? "AGENT BUSY..." : "DISPATCH AGENT"}
-                </Button>
-              </CardContent>
-              <CardContent>
-                {!scraped ? (
-                   <div className="text-center py-20 bg-slate-950/40 rounded-2xl border border-white/5 border-dashed">
-                    <Search className="h-12 w-12 text-slate-800 mx-auto mb-4" />
-                    <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No active data stream</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {scraped.latest?.map((s: any) => (
-                      <div key={s.id} className="p-4 rounded-xl border border-white/10 bg-white/5 hover:border-accent/30 transition-all group">
-                         <div className="flex justify-between items-start mb-2">
-                           <h4 className="font-black text-white group-hover:text-accent transition-colors">{s.name}</h4>
-                           <Badge variant="outline" className="text-[9px] border-white/10 text-slate-400">{s.category}</Badge>
-                         </div>
-                         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{s.description}</p>
-                         <div className="flex justify-between items-center mt-4 pt-3 border-t border-white/5">
-                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Eligibility: {s.eligibility}</p>
-                           <a href={s.officialLink} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-accent hover:underline">OFFICIAL LINK</a>
-                         </div>
-                      </div>
-                    ))}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Subscription & Performance Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              
+              {/* Subscription Card */}
+              <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-white/10 shadow-2xl relative overflow-hidden col-span-1 lg:col-span-2">
+                {subStatus?.plan?.planKey === 'professional' && (
+                  <div className="absolute -right-10 top-6 rotate-45 bg-accent text-white py-1 px-10 text-[10px] font-black uppercase tracking-widest shadow-lg">
+                    Most Popular
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Government-Published Schemes */}
-            <Card className="bg-slate-900 border-white/10 shadow-2xl overflow-hidden mt-6">
-              <div className="h-1 bg-gradient-to-r from-green-500 to-accent" />
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="font-heading text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-green-400" /> Gov-Published Schemes
-                    </CardTitle>
-                    <p className="text-xs text-slate-500 font-bold tracking-widest mt-1">
-                      Officially published by government officials — share these with your clients
-                    </p>
-                  </div>
-                  <Badge className="bg-green-500/10 text-green-400 border-green-500/30 text-[10px]">
-                    {govSchemes.length} Live
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {govSchemes.length === 0 ? (
-                  <div className="text-center py-12 bg-slate-950/40 rounded-2xl border border-white/5 border-dashed">
-                    <Shield className="h-10 w-10 text-slate-700 mx-auto mb-3" />
-                    <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No government schemes published yet</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {govSchemes.map((s: any) => (
-                      <div key={s.id} className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 hover:border-green-500/40 transition-all">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1 min-w-0">
-                            <Badge className="text-[9px] bg-green-500/10 text-green-400 border-green-500/20 mb-1">GOV VERIFIED</Badge>
-                            <h4 className="font-black text-white text-sm leading-tight">{s.name}</h4>
-                            <p className="text-[10px] text-slate-400 mt-0.5">{s.ministry}</p>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Shield className="h-5 w-5 text-accent" /> Active Subscription
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!subStatus?.allowed ? (
+                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-4">
+                      <AlertCircle className="h-6 w-6 text-red-500 mt-1 shrink-0" />
+                      <div>
+                         <p className="font-bold text-red-500 text-lg">No Active Plan or Limit Reached</p>
+                         <p className="text-sm text-slate-300 mt-1">You must subscribe to a plan to claim priority assisted applications. Free leads are still available.</p>
+                         <Button onClick={() => navigate('/agent-subscription')} className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold">View Plans</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col md:flex-row justify-between gap-6">
+                       <div>
+                         <h3 className="text-3xl font-black text-white">{subStatus.plan.planName}</h3>
+                         <p className="text-slate-400 text-sm mt-1">Valid until {new Date(subStatus.plan.expiryDate).toLocaleDateString()}</p>
+                         <div className="mt-6 space-x-3">
+                           <Button onClick={() => navigate('/agent-subscription')} variant="outline" className="border-white/20 text-white hover:bg-white/10">Upgrade Plan</Button>
+                         </div>
+                       </div>
+                       <div className="bg-black/30 p-6 rounded-2xl border border-white/5 flex-1 max-w-xs">
+                          <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-4">Application Credits</p>
+                          <div className="flex items-end gap-2 mb-2">
+                            <span className="text-4xl font-black text-accent">{subStatus.plan.limit === -1 ? '∞' : subStatus.remaining}</span>
+                            <span className="text-sm text-slate-400 pb-1">remaining</span>
                           </div>
-                        </div>
-                        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-3">{s.description}</p>
-                        <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-slate-500">Benefits: {s.benefits?.substring(0, 50)}...</p>
-                          {s.applyLink && s.applyLink !== '#' && (
-                            <a href={s.applyLink} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-accent hover:underline">APPLY →</a>
+                          {subStatus.plan.limit !== -1 && (
+                            <div className="w-full bg-slate-800 rounded-full h-2 mt-4">
+                              <div className="bg-accent h-2 rounded-full" style={{ width: `${(subStatus.used / subStatus.plan.limit) * 100}%` }}></div>
+                            </div>
                           )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                          <p className="text-[10px] text-slate-500 mt-2 uppercase">{subStatus.used} used of {subStatus.plan.limit === -1 ? 'Unlimited' : subStatus.plan.limit}</p>
+                       </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Performance Stats */}
+              <Card className="bg-slate-900 border-white/10 shadow-xl">
+                 <CardHeader>
+                   <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-400">Total Earnings</CardTitle>
+                 </CardHeader>
+                 <CardContent>
+                    <div className="flex items-center gap-4">
+                       <div className="h-12 w-12 rounded-2xl bg-green-500/10 flex items-center justify-center">
+                         <IndianRupee className="h-6 w-6 text-green-500" />
+                       </div>
+                       <div>
+                         <p className="text-3xl font-black text-white">₹{(wallet?.totalEarned || 0) / 100}</p>
+                         <p className="text-xs text-green-500 flex items-center gap-1 mt-1 font-bold"><TrendingUp className="h-3 w-3" /> Lifetime</p>
+                       </div>
+                    </div>
+                 </CardContent>
+              </Card>
+            </div>
           </TabsContent>
-          
+
+          <TabsContent value="wallet" className="space-y-6">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="bg-slate-900 border-white/10 shadow-xl md:col-span-2">
+                   <CardContent className="p-8">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+                         <div>
+                            <p className="text-sm font-black uppercase tracking-widest text-slate-500 mb-2">Available for Withdrawal</p>
+                            <p className="text-5xl font-black text-white">₹{(wallet?.pendingEarnings || 0) / 100}<span className="text-xl text-slate-500 ml-1">.00</span></p>
+                         </div>
+                         <Button 
+                          onClick={requestWithdrawal} 
+                          disabled={!wallet?.pendingEarnings || wallet.pendingEarnings < 50000}
+                          className="h-14 px-8 bg-accent hover:bg-accent/90 text-black font-black text-lg rounded-2xl shadow-lg shadow-accent/20"
+                         >
+                           Withdraw Funds
+                         </Button>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-6"><AlertCircle className="h-3 w-3 inline mr-1"/> Minimum withdrawal amount is ₹500. Standard processing time 2-3 business days.</p>
+                   </CardContent>
+                </Card>
+                <Card className="bg-slate-900 border-white/10 shadow-xl">
+                   <CardHeader>
+                     <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-400">Total Processed</CardTitle>
+                   </CardHeader>
+                   <CardContent>
+                      <p className="text-3xl font-black text-white">{historyApps.length}</p>
+                      <p className="text-xs text-slate-500 mt-2 font-bold uppercase tracking-widest">Successful Applications</p>
+                   </CardContent>
+                </Card>
+             </div>
+
+             <Card className="bg-slate-900 border-white/10 shadow-xl">
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-white">Withdrawal History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                   {withdrawals.length === 0 ? (
+                      <p className="text-center py-8 text-slate-500 text-sm">No withdrawal requests found.</p>
+                   ) : (
+                      <div className="space-y-4">
+                         {withdrawals.map((w, i) => (
+                            <div key={i} className="flex justify-between items-center p-4 bg-[#0f172a] rounded-xl border border-white/5">
+                               <div className="flex items-center gap-4">
+                                  <div className="bg-white/5 p-3 rounded-lg"><Wallet className="h-5 w-5 text-slate-400" /></div>
+                                  <div>
+                                     <p className="text-white font-bold">₹{w.amount / 100}</p>
+                                     <p className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</p>
+                                  </div>
+                               </div>
+                               <Badge className={
+                                 w.status === 'paid' ? 'bg-green-500/20 text-green-500' :
+                                 w.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
+                                 'bg-yellow-500/20 text-yellow-500'
+                               }>
+                                 {w.status.toUpperCase()}
+                               </Badge>
+                            </div>
+                         ))}
+                      </div>
+                   )}
+                </CardContent>
+             </Card>
+          </TabsContent>
+
           <TabsContent value="pool">
             {poolApps.length === 0 ? (
               <div className="text-center py-20 bg-slate-950/40 rounded-3xl border border-white/10 border-dashed">
@@ -443,60 +522,131 @@ const AgentDashboard = () => {
           </TabsContent>
 
           <TabsContent value="assistance">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-black text-white uppercase tracking-tight">Citizen Callback Requests</h2>
-                  <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Connect with users seeking expert guidance</p>
+            <div className="space-y-12">
+              
+              {/* SECTION: ACTIVE CASES */}
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tight">Active Consultations</h2>
+                    <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">In-progress client cases</p>
+                  </div>
+                  <Badge variant="outline" className="border-accent/30 text-accent font-black uppercase text-[10px] px-3 py-1 bg-accent/5">
+                    {activeCases.length} Active
+                  </Badge>
                 </div>
-                <Badge variant="outline" className="border-accent/30 text-accent font-black uppercase text-[10px] px-3 py-1">Direct Leads</Badge>
+
+                {activeCases.length === 0 ? (
+                  <div className="text-center py-16 bg-slate-950/40 rounded-3xl border border-white/5 border-dashed">
+                    <CheckCircle className="h-10 w-10 text-slate-700 mx-auto mb-3" />
+                    <p className="text-slate-400 font-bold">No active consultations.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-6">
+                    {activeCases.map((req: any) => (
+                      <Card key={req.id} className="bg-[#020617] border border-accent/40 shadow-[0_0_20px_rgba(var(--accent-rgb),0.05)] overflow-hidden">
+                        <div className="h-1 w-full bg-accent" />
+                        <CardContent className="p-0">
+                          <div className="p-6 md:p-8">
+                            <div className="flex items-center justify-between mb-6">
+                               <div className="flex items-center gap-3">
+                                 <h3 className="font-black text-2xl text-white tracking-tight leading-none">{req.userName || "Anonymous Guest"}</h3>
+                                 <Badge className="bg-accent text-white border-0 text-[10px] font-black tracking-widest uppercase">Ongoing Process</Badge>
+                               </div>
+                               <p className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">ID: {req.id?.substring(0,8)}</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-white/10">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Target Scheme</p>
+                                <p className="text-lg font-bold text-white leading-tight">{req.schemeName || "General Discovery"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Contact Operations</p>
+                                <div className="space-y-3">
+                                  <a href={`tel:${req.userPhone}`} className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors group">
+                                    <div className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10">
+                                      <Phone className="h-3 w-3" />
+                                    </div>
+                                    <span className="font-bold text-sm tracking-wide">{req.userPhone}</span>
+                                  </a>
+                                  {req.userEmail && (
+                                    <a href={`mailto:${req.userEmail}`} className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors group">
+                                      <div className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10">
+                                        <MessageSquare className="h-3 w-3" />
+                                      </div>
+                                      <span className="font-medium text-sm">{req.userEmail}</span>
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row justify-end gap-4">
+                              <Button variant="outline" className="h-12 border-white/10 text-white hover:bg-white/5 font-bold px-8 rounded-xl" onClick={() => updateRequestStatus(req.id, 'rejected')}>
+                                Cancel Lead
+                              </Button>
+                              <Button className="h-12 bg-green-600 hover:bg-green-500 text-white font-black px-8 rounded-xl shadow-lg shadow-green-900/20" onClick={() => updateRequestStatus(req.id, 'completed')}>
+                                <CheckCircle className="h-4 w-4 mr-2" /> REQUEST COMPLETED
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {helpRequests.length === 0 ? (
-                <div className="text-center py-20 bg-slate-950/40 rounded-3xl border border-white/10 border-dashed">
-                  <MessageSquare className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-                  <p className="text-slate-300 font-bold">No help requests at the moment.</p>
+              {/* SECTION: PENDING LEADS */}
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-black text-white uppercase tracking-tight">Pending Leads Pool</h2>
+                    <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">New callback requests awaiting assignment</p>
+                  </div>
+                  <Badge variant="outline" className="border-slate-700 text-slate-400 font-black uppercase text-[10px] px-3 py-1">
+                    {pendingLeads.length} Available
+                  </Badge>
                 </div>
-              ) : (
-                <div className="grid gap-4">
-                  {helpRequests.map((req: any) => (
-                    <Card key={req.id} className="bg-slate-900 border border-white/10 overflow-hidden group hover:border-accent/30 transition-all">
-                      <CardContent className="p-6">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                          <div className="space-y-3 flex-1">
-                            <div className="flex items-center gap-3">
-                              <h3 className="font-black text-lg text-white tracking-tight leading-none">{req.userName || "Anonymous Guest"}</h3>
-                              <Badge className="bg-success/10 text-success border-success/20 text-[10px] font-black tracking-widest uppercase">New Lead</Badge>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
-                              <p className="text-xs text-slate-400 flex items-center gap-2">
-                                <Phone className="h-3 w-3 text-accent" /> <span className="text-white font-bold">{req.userPhone}</span>
-                              </p>
-                              <p className="text-xs text-slate-400 flex items-center gap-2">
-                                <FileText className="h-3 w-3 text-slate-500" /> Scheme: <span className="text-slate-200 font-medium">{req.schemeName || "General Discovery"}</span>
-                              </p>
-                            </div>
-                            {req.userEmail && (
-                              <p className="text-xs text-slate-400 flex items-center gap-2">
-                                <MessageSquare className="h-3 w-3 text-slate-500" /> <span className="text-slate-200">{req.userEmail}</span>
-                              </p>
-                            )}
-                          </div>
 
-                          <div className="flex items-center gap-2">
-                             <a href={`tel:${req.userPhone}`} className="flex-1 sm:flex-none">
-                               <Button className="w-full h-12 bg-white text-black font-black hover:bg-slate-100 rounded-xl flex items-center justify-center gap-2 px-6">
-                                 <Phone className="h-4 w-4" /> INITIATE CALL
+                {pendingLeads.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-900/40 rounded-3xl border border-white/5 border-dashed">
+                    <MessageSquare className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+                    <p className="text-slate-500 font-bold text-sm">No new leads in the global pool.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {pendingLeads.map((req: any) => (
+                      <Card key={req.id} className="bg-slate-900 border border-white/10 hover:border-white/20 transition-all">
+                        <CardContent className="p-5">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-3">
+                                <h3 className="font-bold text-lg text-white leading-none">{req.userName || "Anonymous Lead"}</h3>
+                                <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[9px] font-black tracking-widest uppercase">New Lead</Badge>
+                                {req.state && (
+                                  <Badge className="bg-[#f97316]/10 text-[#f97316] border-[#f97316]/20 text-[9px] font-black tracking-widest uppercase">{req.state}</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400 font-medium">{req.schemeName || "General Assistance"}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                               <Button variant="outline" className="h-10 border-white/10 hover:bg-white/5 text-slate-300 font-bold w-full sm:w-auto" onClick={() => updateRequestStatus(req.id, 'rejected')}>
+                                 Decline
                                </Button>
-                             </a>
+                               <Button className="h-10 bg-white text-black hover:bg-slate-200 font-black px-6 shadow-md w-full sm:w-auto" onClick={() => updateRequestStatus(req.id, 'accepted')}>
+                                 Accept Lead
+                               </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
           </TabsContent>
 

@@ -2,14 +2,14 @@ import os
 import json
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Configure Gemini AI
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "mock-gemini-key")
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Use standard requests, but for a real production scenario, use Playwright or ScrapingBee
 def fetch_url(url: str) -> str:
@@ -62,8 +62,10 @@ def extract_schemes_with_ai(raw_text: str, source_url: str) -> list:
     """
 
     try:
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt
+        )
         response_text = response.text.strip()
         
         # Clean potential markdown wrapping

@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity, Edit, RefreshCcw, AlertTriangle } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts";
+import { Shield, LogOut, FileText, BarChart3, Search, Eye, Bookmark, Plus, Trash2, UserCheck, History, Lock, Clock, Activity, Edit, RefreshCcw, AlertTriangle, Settings } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
 import { useGovernmentAnalytics, useGovernmentApplications } from "@/hooks/useGovernment";
 import { useSchemes } from "@/hooks/useSchemes";
+import { indianStates } from "@/data/schemes";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { io } from "socket.io-client";
@@ -22,7 +23,7 @@ const COLORS = ['hsl(24, 90%, 50%)', 'hsl(200, 80%, 50%)', 'hsl(150, 60%, 45%)',
 
 const GovernmentDashboard = () => {
   const queryClient = useQueryClient();
-  const { logout } = useAuth();
+  const { logout, user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [appFilters, setAppFilters] = useState({ status: "", search: "" });
   const [activeTab, setActiveTab] = useState("scraper");
@@ -204,8 +205,9 @@ const GovernmentDashboard = () => {
       await api.post("/government/resolve-agent-status", { userId, status });
       toast({ title: status === 'active' ? "Agent approved!" : "Agent rejected." });
       fetchAgents();
-    } catch(e) {
-      toast({ title: "Failed to resolve status", variant: "destructive" });
+    } catch(e: any) {
+      console.error('Resolve Agent Error:', e.response?.data || e.message);
+      toast({ title: "Failed to resolve status", description: e.response?.data?.error || e.message, variant: "destructive" });
     }
   };
 
@@ -239,7 +241,9 @@ const GovernmentDashboard = () => {
     fetchScrapedSchemes();
 
     // Connect to WebSocket for real-time scraped schemes
-    const socket = io("http://localhost:3001");
+    // FIX: Removed hardcoded localhost:3001 — now uses VITE_WS_URL env variable
+    const WS_URL = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+    const socket = io(WS_URL);
     
     socket.on('connect', () => {
       console.log('Connected to WebSocket server');
@@ -285,6 +289,7 @@ const GovernmentDashboard = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-card border">
              <TabsTrigger value="applications"><FileText className="h-4 w-4 mr-1" /> Applications</TabsTrigger>
+            <TabsTrigger value="analytics"><BarChart3 className="h-4 w-4 mr-1" /> Analytics</TabsTrigger>
             <TabsTrigger value="agents"><UserCheck className="h-4 w-4 mr-1" /> Agent Management</TabsTrigger>
             <TabsTrigger value="approvals" className="relative" onClick={fetchAgents}>
               <Shield className="h-4 w-4 mr-1" /> Account Approvals
@@ -296,7 +301,175 @@ const GovernmentDashboard = () => {
             <TabsTrigger value="publish"><Plus className="h-4 w-4 mr-1" /> Publish Scheme</TabsTrigger>
             <TabsTrigger value="audit-trail"><History className="h-4 w-4 mr-1" /> Audit Trail</TabsTrigger>
             <TabsTrigger value="scraper"><Search className="h-4 w-4 mr-1" /> Scraper</TabsTrigger>
+            <TabsTrigger value="revenue"><Activity className="h-4 w-4 mr-1" /> Revenue & Performance</TabsTrigger>
+            <TabsTrigger value="settings"><Settings className="h-4 w-4 mr-1" /> Settings</TabsTrigger>
           </TabsList>
+
+          {/* Settings / Profile */}
+          <TabsContent value="settings">
+            <Card className="shadow-card max-w-2xl">
+              <CardHeader>
+                <CardTitle className="font-heading text-xl">Official Profile Settings</CardTitle>
+                <CardDescription>Update your working state jurisdiction to access relevant data.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!user?.state && (
+                   <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex items-start gap-3">
+                     <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                     <p className="text-sm font-bold">You have not assigned your jurisdiction state. You will not be able to see any agents, applications, or revenue data until you set your state.</p>
+                   </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Working State / Jurisdiction</Label>
+                  <Select 
+                    defaultValue={user?.state || ""} 
+                    onValueChange={async (val) => {
+                       try {
+                         await api.put('/profile', { state: val });
+                         toast({ title: '✅ Jurisdiction Updated!', description: 'Your state has been updated.' });
+                         await refreshUser();
+                         queryClient.invalidateQueries();
+                       } catch(e: any) {
+                         toast({ title: 'Error', description: 'Failed to update state.', variant: 'destructive' });
+                       }
+                    }}
+                  >
+                    <SelectTrigger className="w-full md:w-[300px]">
+                      <SelectValue placeholder="Select your state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Central">Central (All India)</SelectItem>
+                      {indianStates.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-2">Setting this will automatically filter all dashboard statistics, active agents, and applications to your selected state.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Revenue & Performance */}
+          <TabsContent value="revenue">
+             <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {[
+                    { label: "Total Platform Revenue", value: `₹${analytics?.totalRevenue?.toLocaleString() || "0"}`, icon: Activity, desc: "All sources combined" },
+                    { label: "Platform Cut (Commissions)", value: `₹${analytics?.platformRevenue?.toLocaleString() || "0"}`, icon: Bookmark, desc: "₹74 per assisted app" },
+                    { label: "Agent Earnings (Paid Out)", value: `₹${analytics?.agentRevenuePaid?.toLocaleString() || "0"}`, icon: UserCheck, desc: "₹175 per assisted app" },
+                    { label: "Subscription Revenue", value: `₹${analytics?.subscriptionRevenue?.toLocaleString() || "0"}`, icon: BarChart3, desc: "From Agent plans" },
+                  ].map((s) => (
+                    <Card key={s.label} className="shadow-card border-accent/20">
+                      <CardContent className="p-5 flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                           <div className="bg-accent/10 p-2 rounded-lg"><s.icon className="h-5 w-5 text-accent" /></div>
+                           <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">{s.label}</p>
+                        </div>
+                        <p className="text-3xl font-heading font-black text-foreground mt-2">{s.value}</p>
+                        <p className="text-[10px] text-muted-foreground">{s.desc}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                   <Card className="shadow-card">
+                      <CardHeader>
+                         <CardTitle className="font-heading text-base flex justify-between items-center">
+                            Revenue Trends (Last 6 Months)
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                         <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={analytics?.revenueByMonth?.labels?.map((label: string, i: number) => ({ month: label, revenue: analytics.revenueByMonth.values[i] })) || []}>
+                              <defs>
+                                <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.8}/>
+                                  <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                              <XAxis dataKey="month" fontSize={11} />
+                              <YAxis fontSize={12} tickFormatter={(val) => `₹${val}`} />
+                              <Tooltip formatter={(val) => [`₹${val}`, 'Revenue']} />
+                              <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorRev)" />
+                            </AreaChart>
+                         </ResponsiveContainer>
+                      </CardContent>
+                   </Card>
+
+                   <Card className="shadow-card">
+                      <CardHeader>
+                         <CardTitle className="font-heading text-base flex justify-between items-center">
+                            Top Performing Agents
+                            <Badge variant="outline" className="text-[10px] uppercase">By Lifetime Earnings</Badge>
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                         <div className="space-y-4">
+                            {analytics?.topAgents?.length === 0 ? (
+                               <p className="text-muted-foreground italic text-sm text-center py-8">No agent earnings yet.</p>
+                            ) : (
+                               analytics?.topAgents?.map((agent: any, i: number) => (
+                                  <div key={agent.agentId} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl border border-border/50">
+                                     <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent text-xs">
+                                           #{i + 1}
+                                        </div>
+                                        <div>
+                                           <p className="font-bold text-sm text-foreground">{agent.name}</p>
+                                           <p className="text-[10px] text-muted-foreground uppercase">ID: {agent.agentId.substring(0,6)}</p>
+                                        </div>
+                                     </div>
+                                     <div className="text-right">
+                                        <p className="font-black text-accent">₹{agent.earnings.toLocaleString()}</p>
+                                        <p className="text-[10px] text-muted-foreground uppercase">Earned</p>
+                                     </div>
+                                  </div>
+                               ))
+                            )}
+                         </div>
+                      </CardContent>
+                   </Card>
+
+                   <Card className="shadow-card">
+                      <CardHeader>
+                         <CardTitle className="font-heading text-base flex justify-between items-center">
+                            Conversion Rate
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex flex-col items-center justify-center py-8">
+                         <div className="relative h-40 w-40 flex items-center justify-center">
+                            <svg className="w-full h-full -rotate-90">
+                               <circle cx="80" cy="80" r="70" className="stroke-muted fill-none" strokeWidth="12" />
+                               <circle 
+                                  cx="80" cy="80" r="70" 
+                                  className="stroke-accent fill-none transition-all duration-1000" 
+                                  strokeWidth="12" 
+                                  strokeDasharray="440" 
+                                  strokeDashoffset={440 - (440 * (analytics?.conversionRate || 0))} 
+                                  strokeLinecap="round" 
+                               />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                               <span className="text-3xl font-black text-foreground">{Math.round((analytics?.conversionRate || 0) * 100)}%</span>
+                               <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Assisted</span>
+                            </div>
+                         </div>
+                         <div className="flex gap-8 mt-8">
+                            <div className="text-center">
+                               <p className="text-2xl font-black text-foreground">{analytics?.assistedApplications || 0}</p>
+                               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Premium Apps</p>
+                            </div>
+                            <div className="text-center">
+                               <p className="text-2xl font-black text-foreground">{(analytics?.totalApplications || 0) - (analytics?.assistedApplications || 0)}</p>
+                               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Free Apps</p>
+                            </div>
+                         </div>
+                      </CardContent>
+                   </Card>
+                </div>
+             </div>
+          </TabsContent>
 
           {/* Agent Management */}
           <TabsContent value="agents">

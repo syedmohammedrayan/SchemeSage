@@ -63,9 +63,13 @@ export async function scrapeSchemes() {
       await ScrapedSchemeModel.findOneAndUpdate(
         { name: scheme.name },
         { 
-          id: `scraped-${crypto.randomUUID()}`,
-          ...scheme,
-          updatedAt: new Date()
+          $set: {
+            ...scheme,
+            updatedAt: new Date()
+          },
+          $setOnInsert: {
+            id: `scraped-${crypto.randomUUID()}`
+          }
         },
         { upsert: true, returnDocument: 'after' }
       );

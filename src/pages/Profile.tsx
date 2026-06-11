@@ -26,6 +26,7 @@ const Profile = () => {
   const [uploading, setUploading] = useState(false);
 
   const isAgent = user?.role === 'admin' || user?.role === 'agent';
+  const isGov = user?.role === 'government';
 
   const [formData, setFormData] = useState({
     fullName: user?.fullName || "",
@@ -252,6 +253,34 @@ const Profile = () => {
                   </div>
                 </div>
 
+                {/* Government Jurisdiction */}
+                {isGov && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                        <Building2 className="h-3.5 w-3.5 text-accent" /> Official Jurisdiction
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Administered State / Level</Label>
+                          <Select value={formData.state || "Central"} onValueChange={v => setFormData({ ...formData, state: v })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select Jurisdiction" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              <SelectItem value="Central" className="font-bold text-accent">Central / All States</SelectItem>
+                              {indianStates.map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {/* Agent-specific fields */}
                 {isAgent && (
                   <>
@@ -334,6 +363,7 @@ const Profile = () => {
                   <p className="text-sm font-semibold text-foreground">What gets updated?</p>
                   <ul className="text-xs text-muted-foreground mt-1 space-y-1">
                     <li>• Your details in <strong>Firebase/Firestore</strong> are updated in real time</li>
+                    {isGov && <li>• Setting your Jurisdiction ensures you only receive and manage agent requests for your assigned State.</li>}
                     {isAgent && <li>• Government sees your updated profile in the <strong>Agent Management</strong> tab</li>}
                     {isAgent && <li>• Citizens see your updated name, state and expertise in the <strong>public agents directory</strong></li>}
                     <li>• Email is managed by Firebase Auth and cannot be changed here</li>

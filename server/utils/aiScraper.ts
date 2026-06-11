@@ -2,61 +2,106 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ScrapedSchemeModel } from '../models/index.js';
+import { ScrapedSchemeModel, ProcessedSchemeModel, ScrapeJobModel } from '../models/index.js';
 import crypto from 'crypto';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function performRegexExtraction(raw: any) {
+  const textToAnalyze = `${raw.name} ${raw.description}`;
+  const incomeMatch = textToAnalyze.match(/income.*?below.*?₹?([\d,]+(\s*lakh)?)/i) || textToAnalyze.match(/annual family income.*?₹?([\d,]+(\s*lakh)?)/i);
+  const ageMatch = textToAnalyze.match(/age.*?(\d{2}).*?years/i) || textToAnalyze.match(/(\d{2}).*?years/i);
+  const categoryMatch = textToAnalyze.match(/(SC|ST|OBC|EWS|General|Minority)/gi);
+  const genderMatch = textToAnalyze.match(/(Male|Female|Women|Girls)/gi);
+  const occupationMatch = textToAnalyze.match(/(Student|Farmer|Worker|Self-employed|Unemployed)/gi);
+  
+  if (!incomeMatch && !categoryMatch && !ageMatch) return null;
+  
+  const eligibility: any = { categories: [], gender: "all", occupations: [] };
+  
+  if (incomeMatch) {
+    let incStr = incomeMatch[1].replace(/,/g, '').toLowerCase();
+    if (incStr.includes('lakh')) {
+      eligibility.maxIncome = parseFloat(incStr) * 100000;
+    } else {
+      eligibility.maxIncome = parseInt(incStr, 10);
+    }
+  }
+  if (ageMatch) eligibility.minAge = parseInt(ageMatch[1], 10);
+  if (categoryMatch) eligibility.categories = [...new Set(categoryMatch.map(c => c.toUpperCase()))];
+  if (genderMatch) eligibility.gender = genderMatch[0].toLowerCase();
+  if (occupationMatch) eligibility.occupations = [...new Set(occupationMatch.map(o => o.toLowerCase()))];
+  
+  return eligibility;
+}
 
 export async function runAIScraper() {
   console.log('[🚀 AI Scraper] Starting Selenium process...');
   
-  // Use the local virtual environment's python if available
   const venvPython = process.platform === 'win32' 
     ? path.join(process.cwd(), '.venv', 'Scripts', 'python.exe')
     : path.join(process.cwd(), '.venv', 'bin', 'python');
     
   const pythonPath = fs.existsSync(venvPython) ? venvPython : 'python';
+  const targetUrl = 'https://www.myscheme.gov.in/search'; // General identifier for the python script
 
-  const pythonProcess = spawn(pythonPath, [path.join(process.cwd(), 'server', 'scraper', 'selenium_scraper.py')]);
-  
-  let dataString = '';
-  
-  pythonProcess.stdout.on('data', (data) => {
-    dataString += data.toString();
-  });
+  const contentHash = crypto.createHash('md5').update('python-selenium-myscheme').digest('hex');
 
-  return new Promise((resolve, reject) => {
-    pythonProcess.on('close', async (code) => {
-      if (code !== 0) {
-        console.error(`[🚨 AI Scraper] Python process exited with code ${code}`);
-        return reject(new Error('Python scraper failed'));
+  let attempt = 0;
+  const maxAttempts = 3;
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      await ScrapeJobModel.findOneAndUpdate(
+        { url: targetUrl },
+        { $set: { status: 'processing', attempts: attempt, lastAttempt: new Date() } },
+        { upsert: true }
+      );
+
+      const pythonProcess = spawn(pythonPath, [path.join(process.cwd(), 'server', 'scraper', 'selenium_scraper.py')]);
+      
+      let dataString = '';
+      pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+      });
+
+      const exitCode = await new Promise((resolve, reject) => {
+        pythonProcess.on('close', resolve);
+        pythonProcess.on('error', reject);
+      });
+
+      if (exitCode !== 0) {
+        throw new Error(`Python process exited with code ${exitCode}`);
       }
 
-      try {
-        const rawSchemes = JSON.parse(dataString);
-        console.log(`[🤖 AI Scraper] Found ${rawSchemes.length} schemes. Structuring with AI...`);
+      const rawSchemes = JSON.parse(dataString);
+      console.log(`[🤖 AI Scraper] Found ${rawSchemes.length} schemes. Structuring with AI/Regex...`);
 
-        for (let i = 0; i < rawSchemes.length; i++) {
-          const raw = rawSchemes[i];
-          
-          // Introduce a delay to respect API quotas (except for the first one)
-          if (i > 0) {
-            console.log(`[⏳ AI Scraper] Waiting 4 seconds before next AI request...`);
-            await delay(4000);
-          }
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
-          console.log(`[🤖 AI Scraper] Processing scheme ${i + 1}/${rawSchemes.length}: ${raw.name}`);
+      for (let i = 0; i < rawSchemes.length; i++) {
+        const raw = rawSchemes[i];
+        
+        console.log(`[🤖 AI Scraper] Processing scheme ${i + 1}/${rawSchemes.length}: ${raw.name}`);
 
-          // Use AI to extract rigid structure
+        let aiData: any = null;
+        const regexEligibility = performRegexExtraction(raw);
+
+        if (regexEligibility) {
+          console.log(`[⚡ AI Scraper] Regex extraction successful, bypassing Gemini for ${raw.name}.`);
+          aiData = { eligibility: regexEligibility };
+        } else {
+          console.log(`[🤖 AI Scraper] Regex confidence low. Using Gemini-2.5-Flash-Lite...`);
+          if (i > 0) await delay(4000);
+
           const structurePrompt = `
             Extract structured eligibility data from this Indian government scheme details.
             Return ONLY a valid JSON object.
             
-            Scheme Name: ${raw.name}
-            Details: ${raw.description}
+            Scheme Name: \${raw.name}
+            Details: \${raw.description}
             
             Fields to extract:
             - target_gender: "Male", "Female", or "All"
@@ -72,49 +117,69 @@ export async function runAIScraper() {
 
           try {
             const result = await model.generateContent(structurePrompt);
-            const response = await result.response;
-            const text = response.text();
+            const text = result.response.text();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             
-            let aiData = {};
             if (jsonMatch) {
               aiData = JSON.parse(jsonMatch[0]);
             }
+          } catch (aiErr: any) {
+             console.error(`[⚠️ AI Scraper] AI structuring failed for ${raw.name}:`, aiErr.message || aiErr);
+             throw new Error(`AI Extraction failed for ${raw.name}`); // Will trigger outer retry
+          }
+        }
 
-            // Save to MongoDB
-            await ScrapedSchemeModel.findOneAndUpdate(
-              { name: raw.name },
-              {
-                id: `scraped-${crypto.randomUUID()}`,
+        if (aiData) {
+          await ScrapedSchemeModel.findOneAndUpdate(
+            { name: raw.name },
+            {
+              $set: {
                 ...raw,
                 ...aiData,
                 updatedAt: new Date()
               },
-              { upsert: true, returnDocument: 'after' }
-            );
-            console.log(`[✅ AI Scraper] Successfully structured: ${raw.name}`);
-          } catch (aiErr: any) {
-            if (aiErr.status === 429) {
-              console.warn(`[⚠️ AI Scraper] Quota exceeded for ${raw.name}. Skipping AI enhancement.`);
-            } else {
-              console.error(`[⚠️ AI Scraper] AI structuring failed for ${raw.name}:`, aiErr.message || aiErr);
-            }
-            
-            // Fallback: save without AI enhancement
-            await ScrapedSchemeModel.findOneAndUpdate(
-              { name: raw.name },
-              { id: `scraped-${crypto.randomUUID()}`, ...raw, updatedAt: new Date() },
-              { upsert: true }
-            );
-          }
+              $setOnInsert: {
+                id: `scraped-${crypto.randomUUID()}`
+              }
+            },
+            { upsert: true }
+          );
+          console.log(`[✅ AI Scraper] Successfully structured: ${raw.name}`);
         }
-
-        console.log('[✅ AI Scraper] Completed successfully.');
-        resolve(true);
-      } catch (parseErr) {
-        console.error('[🚨 AI Scraper] Data parsing failed:', parseErr);
-        reject(parseErr);
       }
-    });
-  });
+
+      await ProcessedSchemeModel.create({
+        url: targetUrl,
+        contentHash,
+        lastProcessed: new Date()
+      });
+
+      await ScrapeJobModel.findOneAndUpdate(
+        { url: targetUrl },
+        { $set: { status: 'success', error: null } }
+      );
+
+      console.log('[✅ AI Scraper] Completed successfully.');
+      return true;
+
+    } catch (error: any) {
+      console.error(`[🚨 AI Scraper] Attempt ${attempt} failed:`, error.message || error);
+      
+      if (attempt >= maxAttempts) {
+        await ScrapeJobModel.findOneAndUpdate(
+          { url: targetUrl },
+          { $set: { status: 'failed', error: error.message || String(error) } }
+        );
+        throw error;
+      }
+      
+      const waitTime = attempt === 1 ? 30000 : 60000;
+      await ScrapeJobModel.findOneAndUpdate(
+        { url: targetUrl },
+        { $set: { status: 'retrying', error: error.message || String(error) } }
+      );
+      console.log(`[⏳ AI Scraper] Waiting ${waitTime/1000}s before retry...`);
+      await delay(waitTime);
+    }
+  }
 }

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, UploadCloud, FileText, X, ChevronLeft, Loader2, Landmark, Copy, ShieldCheck, ArrowRight, User, ExternalLink, ArrowUpRight, Eye, Edit2, Save } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface FormData {
   fullName: string;
@@ -32,17 +33,18 @@ export default function ApplyScheme() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { data: scheme, isLoading: schemeLoading } = useScheme(id || "");
+  const { user } = useAuth();
   const createMutation = useCreateApplication();
   const submitMutation = useSubmitApplication();
   
   const [step, setStep] = useState(1);
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({
-    fullName: "",
-    mobile: "",
-    aadhaar: "",
-    state: "",
-    address: ""
+    fullName: user?.fullName || "",
+    mobile: user?.mobile || "",
+    aadhaar: user?.aadharNumber || "",
+    state: user?.state || "",
+    address: user?.address || ""
   });
   
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
@@ -139,6 +141,80 @@ export default function ApplyScheme() {
   const copyTracking = () => {
     navigator.clipboard.writeText(trackingId);
     toast({ title: "Tracking ID Copied", description: "You can use this to track your application status." });
+  };
+
+  useEffect(() => {
+    // Load Razorpay script
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => { document.body.removeChild(script); };
+  }, []);
+
+  const handlePaymentAndSubmit = async () => {
+    if (trackingId !== 'assisted') {
+        // Free flow
+        return submitApplication();
+    }
+
+    // Agent Assisted Flow - ₹199 payment
+    setIsSubmitting(true);
+    try {
+        const orderData = await api.post<any>('/payment/create-order', { applicationId, amount: 19900 });
+        
+        if (orderData.isMock) {
+            // Automatically verify mock payment
+            const res = await api.post<any>('/payment/verify', {
+                applicationId,
+                razorpay_order_id: orderData.orderId,
+                razorpay_payment_id: `mock_pay_${Date.now()}`,
+                razorpay_signature: 'mock_sig'
+            });
+            setTrackingId(res.applicationId || `GOV-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
+            setStep(5);
+            setIsSubmitting(false);
+            return;
+        }
+
+        const options = {
+            key: orderData.keyId,
+            amount: orderData.amount,
+            currency: orderData.currency,
+            name: "SchemeSage.gov",
+            description: `Agent Assistance for ${scheme?.name}`,
+            order_id: orderData.orderId,
+            handler: async (response: any) => {
+                try {
+                    const res = await api.post<any>('/payment/verify', {
+                        applicationId,
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature
+                    });
+                    setTrackingId(res.applicationId || `GOV-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
+                    setStep(5);
+                } catch(e: any) {
+                    toast({ title: "Payment Verification Failed", description: e.message, variant: "destructive" });
+                } finally {
+                    setIsSubmitting(false);
+                }
+            },
+            prefill: {
+                name: formData.fullName,
+                contact: formData.mobile,
+                email: user?.email || ""
+            },
+            theme: { color: "#38bdf8" },
+            modal: { ondismiss: () => setIsSubmitting(false) }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+    } catch (e: any) {
+        toast({ title: "Payment Failed", description: e.message, variant: "destructive" });
+        setIsSubmitting(false);
+    }
   };
 
   if (schemeLoading) {
@@ -506,7 +582,7 @@ export default function ApplyScheme() {
                   >
                     <div className="flex justify-between items-start mb-4">
                       <div className="bg-accent/20 p-3 rounded-xl"><ShieldCheck className="h-6 w-6 text-accent" /></div>
-                      <Badge className="bg-accent text-white border-0">₹499</Badge>
+                      <Badge className="bg-accent text-white border-0">₹199</Badge>
                     </div>
                     <h4 className="text-xl font-bold text-white mb-2">Agent Assisted</h4>
                     <p className="text-sm text-slate-400 leading-relaxed mb-4 flex-grow">A professional field agent will handle your entire application, verify documents, and guarantee a 5-day filing.</p>
@@ -556,7 +632,7 @@ export default function ApplyScheme() {
                      <p className="text-xs font-black text-accent uppercase tracking-widest mb-4">Professional Service Fee</p>
                      <div className="flex justify-between items-center bg-black/40 p-4 rounded-xl">
                         <span className="text-slate-300 font-medium">Platform Fee + GST</span>
-                        <span className="text-2xl font-black text-white">₹499.00</span>
+                        <span className="text-2xl font-black text-white">₹199.00</span>
                      </div>
                   </div>
                 )}
@@ -582,22 +658,7 @@ export default function ApplyScheme() {
                       toast({ title: "Action Required", description: "Please accept the declaration to proceed.", variant: "destructive" });
                       return;
                     }
-                    
-                    setIsSubmitting(true);
-                    try {
-                      const res = await submitMutation.mutateAsync({
-                        id: applicationId!,
-                        documents: uploadedDocs,
-                        type: trackingId === 'assisted' ? 'assisted' : 'free',
-                        paymentStatus: trackingId === 'assisted' ? 'paid' : 'na'
-                      });
-                      setTrackingId(res.application.trackingId);
-                      setStep(5);
-                    } catch (e: any) {
-                      toast({ title: "Process Failed", description: e.message, variant: "destructive" });
-                    } finally {
-                      setIsSubmitting(false);
-                    }
+                    handlePaymentAndSubmit();
                   }} 
                   variant="accent" 
                   className="rounded-2xl h-14 font-black text-lg flex-1 shadow-xl shadow-accent/30"

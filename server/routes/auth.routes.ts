@@ -46,6 +46,23 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'An application with this email is already pending review.' });
     }
 
+    // Validate state availability case-insensitively
+    if (state) {
+      const allGovUsers = await db.collection('users')
+        .where('role', '==', 'government')
+        .where('status', '==', 'active')
+        .get();
+        
+      const isSupported = allGovUsers.docs.some((d: any) => {
+        const st = (d.data().state || 'UNASSIGNED').toLowerCase().trim();
+        return st === 'central' || st === 'all' || st === 'unassigned' || st === '' || st === state.toLowerCase().trim();
+      });
+
+      if (!isSupported) {
+        return res.status(400).json({ error: `This platform is right now not available in your state (${state}).` });
+      }
+    }
+
     // Also check active users
     try {
       await auth.getUserByEmail(email);
@@ -82,6 +99,35 @@ router.post('/register', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Registration Error]', error);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ─── ACTIVE STATES ─────────────────────────────────────────────────────────────
+import fs from 'fs';
+router.get('/active-states', async (_req: Request, res: Response) => {
+  try {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    const govUsers = await db.collection('users')
+      .where('role', '==', 'government')
+      .where('status', '==', 'active')
+      .get();
+      
+    // Normalize all states to lowercase and trim whitespace to handle any database inconsistencies
+    let rawStates = govUsers.docs.map((d: any) => (d.data().state || 'UNASSIGNED').toLowerCase().trim());
+    let states = Array.from(new Set(rawStates));
+    
+    // If a Central official exists, technically all states are supported
+    if (states.includes('central') || states.includes('all') || states.includes('unassigned') || states.includes('')) {
+      states = ['central']; // Frontend checks for lowercase 'central'
+    }
+    
+    res.json({ states });
+  } catch (error) {
+    console.error('❌ [Active States Error]', error);
+    res.status(500).json({ error: 'Failed to fetch active states' });
   }
 });
 
@@ -171,6 +217,74 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// ─── GOOGLE OAUTH LOGIN ────────────────────────────────────────────────────────
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = header.split(' ')[1];
+    const decoded = await auth.verifyIdToken(token);
+
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    const uid = decoded.uid;
+    const email = decoded.email!;
+    
+    // We expect the frontend to send the decoded Google profile info if available
+    const { displayName, photoURL } = req.body;
+
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+
+    let user;
+
+    if (!userDoc.exists) {
+      console.log(`[Auth] Auto-provisioning citizen profile for new Google OAuth user: ${email}`);
+      user = {
+        id: uid,
+        fullName: displayName || email.split('@')[0],
+        email,
+        mobile: '',
+        state: '',
+        district: '',
+        role: 'citizen',
+        status: 'active',
+        avatarUrl: photoURL || '',
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+        profileCompleted: false
+      };
+      await userRef.set(user);
+    } else {
+      user = userDoc.data()!;
+      
+      // Prevent other roles from bypassing their portals
+      if (user.role !== 'citizen') {
+        return res.status(403).json({ 
+          error: `Access denied. This account belongs to the ${user.role} role. Please use the Official Access portal.`
+        });
+      }
+
+      await userRef.update({
+        lastLogin: new Date().toISOString(),
+        avatarUrl: photoURL || user.avatarUrl || '' // Update avatar if provided
+      });
+      user.lastLogin = new Date().toISOString();
+      if (photoURL) user.avatarUrl = photoURL;
+    }
+
+    res.json({ token, user: sanitizeUser(user) });
+  } catch (error: any) {
+    console.error('❌ [Google Login Error]', error);
+    res.status(500).json({ error: 'Failed to process Google authentication.' });
+  }
+});
+
 // ─── GET CURRENT USER ─────────────────────────────────────────────────────────
 router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
@@ -189,11 +303,9 @@ router.post('/logout', (_req: Request, res: Response) => {
 });
 
 // ─── UPDATE PROFILE ───────────────────────────────────────────────────────────
-router.patch('/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { fullName, mobile, address, email, avatarUrl } = req.body;
-    
-    if (!fullName) return res.status(400).json({ error: 'Full name is required' });
+    const { fullName, mobile, address, email, avatarUrl, state } = req.body;
 
     // Check email conflict
     if (email) {
@@ -206,13 +318,15 @@ router.patch('/profile', authMiddleware, async (req: AuthRequest, res: Response)
     const userRef = db.collection('users').doc(req.userId!);
     const currentDoc = await userRef.get();
     if (!currentDoc.exists) return res.status(404).json({ error: 'User not found' });
+    const currentData = currentDoc.data() as any;
 
     await userRef.update({
-      fullName,
-      mobile: mobile || '',
-      address: address || '',
-      email: email || currentDoc.data()?.email,
-      avatarUrl: avatarUrl || '',
+      fullName: fullName || currentData?.fullName || '',
+      mobile: mobile || currentData?.mobile || '',
+      address: address || currentData?.address || '',
+      email: email || currentData?.email,
+      avatarUrl: avatarUrl || currentData?.avatarUrl || '',
+      state: state || currentData?.state || '',
       updatedAt: new Date().toISOString(),
     });
 

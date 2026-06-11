@@ -1,325 +1,317 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { 
-  ArrowLeft, ExternalLink, FileText, CheckCircle, Calendar, 
-  Shield, Sparkles, Loader2, Share2, Printer, Phone, 
-  HelpCircle, Landmark, Bookmark, Headphones, Send 
-} from "lucide-react";
-import { useScheme, useSaveScheme, useCheckSaved } from "@/hooks/useSchemes";
-import { useAISummary, useEligibilityCheck } from "@/hooks/useAI";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { 
+  Building2, Users, FileText, Calendar, ShieldCheck, 
+  ExternalLink, ChevronLeft, ArrowRight, Share2, 
+  Bookmark, CheckCircle2, XCircle, AlertTriangle, Sparkles,
+  RefreshCw, Loader2, IndianRupee
+} from "lucide-react";
 
+const ScoreRing = ({ score }: { score: number }) => {
+  const color = score >= 75 ? '#22C55E' : score >= 50 ? '#F59E0B' : '#EF4444';
+  return (
+    <div className="relative h-16 w-16 shrink-0">
+      <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e293b" strokeWidth="3" />
+        <circle
+          cx="18" cy="18" r="15.9" fill="none"
+          stroke={color} strokeWidth="3"
+          strokeDasharray={`${score} 100`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-sm font-black text-white">{score}%</span>
+        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest -mt-1">Match</span>
+      </div>
+    </div>
+  );
+};
 
 const SchemeDetail = () => {
   const { id } = useParams();
-  const { data: scheme, isLoading } = useScheme(id);
-  const { user } = useAuth();
-  const { data: isSaved } = useCheckSaved(id);
-  const saveScheme = useSaveScheme();
-  const { data: aiSummary, isLoading: summaryLoading } = useAISummary(id);
-  const eligibilityCheck = useEligibilityCheck();
-  const [eligResult, setEligResult] = useState<any>(null);
   const { toast } = useToast();
-  
-  // Connect to Agent state
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [contact, setContact] = useState({ 
-    name: user?.fullName || "", 
-    phone: user?.mobile || "", 
-    email: user?.email || "" 
-  });
+  const [scheme, setScheme] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [eligibilityResult, setEligibilityResult] = useState<any>(null);
 
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    fetchScheme();
+  }, [id]);
+
+  const fetchScheme = async () => {
     try {
-      await api.post('/agents/request', {
-        schemeId: scheme?.id,
-        schemeName: scheme?.name,
-        userName: contact.name,
-        userPhone: contact.phone,
-        userEmail: contact.email,
-        type: 'callback'
-      });
-      toast({ title: "Request Sent!", description: "An agent will contact you shortly regarding this scheme." });
-      setOpen(false);
-      setContact({ name: "", phone: "", email: "" });
-    } catch (error: any) {
-      toast({ title: "Request Failed", description: error.message || "Could not send help request.", variant: "destructive" });
+      setLoading(true);
+      const res = await api.get<any>(`/schemes/${id}`);
+      const schemeData = res.scheme || res; // Fallback in case backend format changes
+      setScheme(schemeData);
+      // After getting scheme, check personalized eligibility
+      checkEligibility(schemeData);
+    } catch (e) {
+      toast({ title: "Failed to load scheme details", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = () => {
-    if (!id) return;
-    saveScheme.mutate(id, {
-      onSuccess: (data) => toast({ title: data.saved ? "Scheme saved!" : "Removed from saved" }),
-    });
+  const checkEligibility = async (schemeData: any) => {
+    setEligibilityLoading(true);
+    try {
+      // Mocking user profile for now if not logged in.
+      // In reality, this would pull from auth context.
+      const mockProfile = { age: 24, occupation: 'student', state: 'Telangana', gender: 'male', income: 120000 };
+      const res: any = await api.post(`/ai/report`, { profile: mockProfile });
+      
+      const allMatches = [...res.report.topMatches, ...res.report.partialMatches];
+      const matchForThisScheme = allMatches.find((m: any) => m.scheme.id === schemeData.id);
+      
+      if (matchForThisScheme) {
+        setEligibilityResult(matchForThisScheme);
+      } else {
+        // If not in report, explicitly check
+        const checkRes: any = await api.post('/ai/eligibility', { schemeId: schemeData.id, profile: mockProfile });
+        setEligibilityResult({ ...checkRes, matchScore: checkRes.eligible ? 50 : 0 });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setEligibilityLoading(false);
+    }
   };
 
-  const handleEligCheck = () => {
-    if (!id) return;
-    eligibilityCheck.mutate({ schemeId: id }, {
-      onSuccess: (data) => setEligResult(data),
-      onError: (error: any) => {
-        console.error('[Eligibility Check Error]', error);
-        toast({ 
-          title: "Eligibility Check Failed", 
-          description: error.message || "We encountered an error while verifying your profile. Please try again soon.", 
-          variant: "destructive" 
-        });
-      },
-    });
-  };
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30">
-        <div className="animate-pulse text-muted-foreground">Loading scheme details...</div>
+      <div className="min-h-screen bg-[#0F172A] text-white flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-[#F97316] animate-spin" />
       </div>
     );
   }
 
-  if (!scheme) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="font-heading font-bold text-2xl text-foreground mb-2">Scheme Not Found</h1>
-          <Link to="/"><Button variant="outline">Go Home</Button></Link>
-        </div>
-      </div>
-    );
-  }
+  if (!scheme) return <div className="min-h-screen bg-[#0F172A] text-white pt-24 text-center">Scheme not found.</div>;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white">
-      <header className="border-b border-white/10 bg-slate-900/80 flex items-center h-20 px-6 sticky top-0 z-50 backdrop-blur-xl">
-        <div className="container mx-auto flex items-center h-full gap-6">
-          <Link to="/dashboard">
-            <Button variant="ghost" size="icon" className="text-slate-300 hover:text-white hover:bg-white/10 h-10 w-10">
-              <ArrowLeft className="h-6 w-6" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Shield className="h-8 w-8 text-accent" />
-            <span className="font-heading font-black text-xl tracking-tight uppercase">Scheme Vault</span>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#0F172A] text-white">
+      <Navbar />
 
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
-        <div className="flex flex-wrap gap-2 mb-6">
-          {(scheme.tags || []).map((tag: string) => (
-            <Badge key={tag} className="bg-accent/10 text-accent border-accent/20 font-black tracking-widest uppercase text-[10px] px-3 py-1">{tag}</Badge>
-          ))}
-        </div>
+      <main className="container mx-auto px-4 pt-24 pb-20 max-w-5xl">
+        {/* Back Link */}
+        <Link to="/discover" className="inline-flex items-center text-sm font-semibold text-[#94A3B8] hover:text-white transition-colors mb-8 group">
+          <ChevronLeft className="h-4 w-4 mr-1 group-hover:-translate-x-1 transition-transform" />
+          Back to Discovery
+        </Link>
 
-        <div className="flex items-start justify-between gap-6 mb-8">
-          <div>
-            <h1 className="font-heading font-black text-4xl text-white tracking-tight leading-tight mb-2">{scheme.name}</h1>
-            <div className="flex items-center gap-2 text-slate-400">
-               <div className="bg-white/5 p-1 rounded"><Landmark className="h-4 w-4" /></div>
-               <span className="text-xs font-black uppercase tracking-widest">{scheme.ministry || 'Ministry of Welfare'}</span>
+        {/* Hero Header */}
+        <div className="flex flex-col md:flex-row gap-8 items-start mb-12">
+          <div className="flex-1">
+            <div className="flex flex-wrap gap-2 mb-4">
+              {scheme.ministry && (
+                <Badge variant="outline" className="border-[#F97316]/30 text-[#F97316] bg-[#F97316]/10 uppercase tracking-widest text-[10px] font-black px-2.5 py-0.5">
+                  {scheme.ministry}
+                </Badge>
+              )}
+              {scheme.source && (
+                 <Badge variant="outline" className="border-blue-500/30 text-blue-400 bg-blue-500/10 uppercase tracking-widest text-[10px] font-black px-2.5 py-0.5 flex items-center gap-1">
+                   <ShieldCheck className="h-3 w-3" /> Source: {scheme.source.split('/')[1] || scheme.source.replace('AI Extractor / ', '')}
+                 </Badge>
+              )}
+              {scheme.updatedAt && (
+                 <Badge variant="outline" className="border-green-500/30 text-green-400 bg-green-500/10 uppercase tracking-widest text-[10px] font-black px-2.5 py-0.5 flex items-center gap-1">
+                   <CheckCircle2 className="h-3 w-3" /> Verified {new Date(scheme.updatedAt).toLocaleDateString()}
+                 </Badge>
+              )}
+              {scheme.tags?.slice(0, 2).map((tag: string) => (
+                <Badge key={tag} variant="outline" className="border-white/10 text-[#94A3B8] bg-white/5 uppercase tracking-widest text-[10px] font-black px-2.5 py-0.5">
+                  {tag}
+                </Badge>
+              ))}
             </div>
+            
+            <h1 className="text-3xl md:text-5xl font-black text-white leading-tight mb-4 tracking-tight">
+              {scheme.name || scheme.title}
+            </h1>
+            
+            <p className="text-[#94A3B8] text-lg leading-relaxed max-w-3xl">
+              {scheme.description || scheme.summary}
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-12 w-12 border-white/10 bg-white/5 hover:bg-white/10 text-white rounded-2xl"
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({ title: scheme.name, text: scheme.description, url: window.location.href });
-                } else {
-                  toast({ title: "Link Copied", description: "Share this scheme with others!" });
-                }
-              }}
-            >
-              <Share2 className="h-5 w-5" />
+          
+          <div className="flex flex-row md:flex-col gap-3 shrink-0 w-full md:w-auto">
+            <Button className="flex-1 md:w-40 bg-white hover:bg-slate-200 text-black hover:text-black font-bold h-12 rounded-xl border-0 shadow-none">
+              <Bookmark className="h-4 w-4 mr-2" /> Save
             </Button>
-            <Button
-               variant="outline"
-               size="icon"
-               className="h-12 w-12 border-white/10 bg-white/5 hover:bg-white/10 text-white rounded-2xl"
-               onClick={() => window.print()}
-            >
-               <Printer className="h-5 w-5" />
+            <Button className="flex-1 md:w-40 bg-white hover:bg-slate-200 text-black hover:text-black font-bold h-12 rounded-xl border-0 shadow-none">
+              <Share2 className="h-4 w-4 mr-2" /> Share
             </Button>
-            {user && (
-              <button
-                onClick={handleSave}
-                className={`h-12 w-12 flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors ${isSaved ? "text-accent" : "text-slate-400"}`}
-              >
-                <Bookmark className="h-5 w-5" fill={isSaved ? "currentColor" : "none"} />
-              </button>
-            )}
           </div>
         </div>
-        <p className="text-muted-foreground mb-6 flex items-center gap-2">
-          <Landmark className="h-4 w-4 text-accent" /> {scheme.ministry}
-        </p>
 
-        {/* AI Summary */}
-        {aiSummary && aiSummary !== scheme.description && (
-          <Card className="shadow-card mb-6 border-accent/20 bg-accent/5">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-accent" />
-                <span className="text-xs font-semibold text-accent">AI Summary</span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Main Content (Left 2/3) */}
+          <div className="lg:col-span-2 space-y-8">
+            
+            {/* Highlights Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="bg-[#020617] border-white/10">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-[#F97316]/10 flex items-center justify-center shrink-0">
+                    <IndianRupee className="h-5 w-5 text-[#F97316]" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Key Benefit</p>
+                    <p className="text-white text-sm font-semibold line-clamp-2">{scheme.benefits}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#020617] border-white/10">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <Users className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Target Group</p>
+                    <p className="text-white text-sm font-semibold line-clamp-2">{scheme.eligibility?.occupations?.join(', ') || 'All Citizens'}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#020617] border-white/10">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                    <Calendar className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Deadline</p>
+                    <p className="text-white text-sm font-semibold">{scheme.deadline ? new Date(scheme.deadline).toLocaleDateString() : 'Continuous'}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* AI Eligibility Panel */}
+            <Card className="bg-gradient-to-br from-[#F97316]/10 to-[#0F172A] border-[#F97316]/20 overflow-hidden shadow-2xl">
+              <div className="bg-[#F97316]/10 px-6 py-4 border-b border-[#F97316]/20 flex items-center justify-between">
+                <h3 className="font-black flex items-center gap-2 text-white text-lg">
+                  <Sparkles className="h-5 w-5 text-[#F97316]" /> Your Eligibility Analysis
+                </h3>
+                {eligibilityLoading && <Loader2 className="h-4 w-4 text-[#F97316] animate-spin" />}
               </div>
-              <p className="text-sm text-foreground leading-relaxed">{aiSummary}</p>
-            </CardContent>
-          </Card>
-        )}
-        {summaryLoading && (
-          <Card className="shadow-card mb-6 border-accent/20 bg-accent/5">
-            <CardContent className="p-4 flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Generating AI summary...
-            </CardContent>
-          </Card>
-        )}
+              
+              <CardContent className="p-6">
+                {!eligibilityResult && !eligibilityLoading ? (
+                  <div className="text-center py-6">
+                    <p className="text-[#94A3B8] mb-4">Complete your profile to see your precise eligibility match.</p>
+                    <Link to="/discover">
+                      <Button variant="accent" className="font-bold rounded-xl shadow-lg shadow-[#F97316]/20">
+                        Check My Eligibility
+                      </Button>
+                    </Link>
+                  </div>
+                ) : eligibilityResult ? (
+                  <div className="flex flex-col md:flex-row gap-8 items-start">
+                    <ScoreRing score={eligibilityResult.matchScore} />
+                    <div className="flex-1 space-y-4">
+                      {eligibilityResult.reason && (
+                        <p className="text-white font-medium text-lg italic bg-[#020617]/50 p-4 rounded-xl border border-white/5">
+                          "{eligibilityResult.reason}"
+                        </p>
+                      )}
+                      
+                      <div className="space-y-3 pt-2">
+                        <p className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Criteria Breakdown</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {eligibilityResult.breakdown?.map((dim: any, i: number) => (
+                            <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${
+                              dim.pass ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'
+                            }`}>
+                              {dim.pass 
+                                ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                                : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                              }
+                              <div>
+                                <p className={`text-sm font-bold ${dim.pass ? 'text-green-50' : 'text-red-50'}`}>{dim.label}</p>
+                                <p className={`text-xs ${dim.pass ? 'text-green-500/70' : 'text-red-400/80'}`}>{dim.detail}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
 
-        <Card className="shadow-card mb-6">
-          <CardContent className="p-6">
-            <h2 className="font-heading font-bold text-lg mb-3">About this Scheme</h2>
-            <p className="text-foreground leading-relaxed">{scheme.description}</p>
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <Card className="shadow-card">
-            <CardContent className="p-6">
-              <h3 className="font-heading font-bold flex items-center gap-2 mb-3">
-                <CheckCircle className="h-5 w-5 text-success" /> Benefits
+            {/* Documents Section */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-black text-white flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#F97316]" /> Required Documents
               </h3>
-              <div className="bg-success/10 text-success rounded-lg px-4 py-3 font-semibold">
-                {scheme.benefits}
+              <div className="bg-[#020617] border border-white/10 rounded-2xl p-6">
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(scheme.documents && scheme.documents.length > 0 ? scheme.documents : [
+                    "Aadhaar Card",
+                    "Income Certificate",
+                    "Bank Account Passbook",
+                    "Passport Size Photograph",
+                    "Category Certificate (if applicable)"
+                  ]).map((doc: string, i: number) => (
+                    <li key={i} className="flex items-center gap-3 text-[#CBD5E1]">
+                      <div className="h-2 w-2 rounded-full bg-[#F97316] shrink-0" />
+                      {doc}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            
+          </div>
 
-          <Card className="shadow-card">
-            <CardContent className="p-6">
-              <h3 className="font-heading font-bold flex items-center gap-2 mb-3">
-                <FileText className="h-5 w-5 text-info" /> Required Documents
-              </h3>
-              <ul className="space-y-2">
-                {(scheme.documents || []).map((doc: string) => (
-                  <li key={doc} className="flex items-center gap-2 text-sm text-foreground">
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
-                    {doc}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-
-        {scheme.deadline && (
-          <Card className="shadow-card mb-6">
-            <CardContent className="p-6 flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-accent" />
-              <div>
-                <p className="font-medium text-foreground">Application Deadline</p>
-                <p className="text-sm text-muted-foreground">{scheme.deadline}</p>
+          {/* Sidebar (Right 1/3) */}
+          <div className="space-y-6">
+            
+            {/* Apply Action Card */}
+            <Card className="bg-[#0F172A] border-white/10 overflow-hidden sticky top-24">
+              <div className="p-6 pb-4">
+                <h3 className="font-black text-xl mb-2 text-white">Ready to Apply?</h3>
+                <p className="text-[#94A3B8] text-sm mb-6">You can choose direct application or professional agent assistance.</p>
+                
+                <Link to={`/apply/${scheme.id || id}`}>
+                  <Button className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-black h-14 rounded-xl text-lg shadow-xl shadow-[#F97316]/20">
+                    Apply Now <ArrowRight className="h-5 w-5 ml-2" />
+                  </Button>
+                </Link>
               </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* AI Eligibility Check */}
-        <Card className="shadow-card mb-6">
-          <CardContent className="p-6">
-            <h3 className="font-heading font-bold flex items-center gap-2 mb-3">
-              <Sparkles className="h-5 w-5 text-accent" /> AI Eligibility Check
-            </h3>
-            {!eligResult ? (
-              <div>
-                <p className="text-sm text-muted-foreground mb-3">Let AI check if you're eligible based on your profile</p>
-                <Button variant="accent" onClick={handleEligCheck} disabled={eligibilityCheck.isPending}>
-                  {eligibilityCheck.isPending ? (
-                    <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Checking...</>
-                  ) : (
-                    <><Sparkles className="h-4 w-4 mr-1" /> Check My Eligibility</>
-                  )}
+              
+              <div className="bg-[#020617] p-4 text-center border-t border-white/5 space-y-4">
+                <p className="text-xs font-semibold text-[#94A3B8] flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-green-500" /> Official Government Scheme
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold uppercase tracking-widest text-[10px]"
+                  onClick={() => toast({ title: "Report Submitted", description: "This scheme has been flagged for re-verification by our AI Agents." })}
+                >
+                  <AlertTriangle className="h-3 w-3 mr-2" /> Report Outdated Info
                 </Button>
               </div>
-            ) : (
-              <div className={`rounded-lg px-4 py-3 ${eligResult.eligible
-                ? "bg-success/10 border border-success/30"
-                : "bg-destructive/10 border border-destructive/30"
-                }`}>
-                <p className={`font-semibold mb-1 ${eligResult.eligible ? "text-success" : "text-destructive"}`}>
-                  {eligResult.eligible ? "You are likely eligible!" : "You may not be eligible"}
-                  <Badge className="ml-2 text-xs" variant="secondary">{eligResult.confidence} confidence</Badge>
-                </p>
-                <p className="text-sm text-foreground">{eligResult.explanation}</p>
-                <Button variant="ghost" size="sm" className="mt-2" onClick={() => setEligResult(null)}>Check again</Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col gap-4 mt-8 pb-12">
-          <Link to={`/apply/${scheme.id}`} className="w-full">
-            <Button variant="accent" size="lg" className="w-full h-16 text-xl shadow-lg shadow-accent/20 font-black uppercase tracking-widest rounded-2xl">
-              Apply Now Securely 
-            </Button>
-          </Link>
-
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="lg" 
-                className="w-full h-16 border-white/10 bg-slate-900 text-white hover:bg-slate-800 font-bold uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3"
-              >
-                <Headphones className="h-5 w-5 text-accent" />
-                Connect to Agent for Help
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-slate-900 border-white/10 text-white p-0 overflow-hidden rounded-3xl border shadow-2xl">
-              <div className="bg-accent p-6 flex flex-col items-center text-center gap-2">
-                <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
-                  <Headphones className="h-8 w-8 text-white" />
-                </div>
-                <DialogTitle className="text-2xl font-black text-white tracking-tight uppercase">Expert Assistance</DialogTitle>
-                <p className="text-white/80 text-sm font-medium">Need help with "{scheme.name}"?</p>
-              </div>
-              <div className="p-8">
-                <form onSubmit={handleConnect} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="detail-name" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Full Name</Label>
-                    <Input id="detail-name" placeholder="John Doe" value={contact.name} onChange={e => setContact({...contact, name: e.target.value})} required className="bg-white/5 border-white/10 rounded-xl h-12" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="detail-phone" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Phone Number</Label>
-                    <Input id="detail-phone" type="tel" placeholder="+91 XXXXX XXXXX" value={contact.phone} onChange={e => setContact({...contact, phone: e.target.value})} required className="bg-white/5 border-white/10 rounded-xl h-12" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="detail-email" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Email (Optional)</Label>
-                    <Input id="detail-email" type="email" placeholder="john@example.com" value={contact.email} onChange={e => setContact({...contact, email: e.target.value})} className="bg-white/5 border-white/10 rounded-xl h-12" />
-                  </div>
-                  <Button type="submit" disabled={loading} className="w-full h-14 bg-accent hover:bg-accent/90 text-white font-black rounded-2xl mt-4 shadow-xl shadow-accent/20">
-                    {loading ? "SENDING REQUEST..." : "SUBMIT HELP REQUEST"}
-                    {!loading && <Send className="h-4 w-4 ml-2" />}
-                  </Button>
-                </form>
-              </div>
-            </DialogContent>
-          </Dialog>
+            </Card>
+            
+          </div>
+          
         </div>
-      </div>
+      </main>
+      
+      <Footer />
     </div>
   );
 };

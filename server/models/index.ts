@@ -179,8 +179,17 @@ class FirestoreWrapper {
     try {
       let updateData = { ...update };
       let incData: any = null;
+      let setOnInsertData: any = null;
+
       if ('$set' in update) {
         updateData = { ...update['$set'] };
+      } else {
+        delete updateData['$setOnInsert'];
+        delete updateData['$inc'];
+      }
+
+      if ('$setOnInsert' in update) {
+        setOnInsertData = update['$setOnInsert'];
       }
       if ('$inc' in update) {
         incData = update['$inc'];
@@ -198,8 +207,8 @@ class FirestoreWrapper {
       const doc = await this.findOne(query);
       if (!doc) {
         if (options.upsert) {
-          const id = query.id || crypto.randomUUID();
-          const initialData = { ...query, ...updateData, id };
+          const id = (setOnInsertData && setOnInsertData.id) || updateData.id || query.id || crypto.randomUUID();
+          const initialData = { ...query, ...updateData, ...(setOnInsertData || {}), id };
           await db.collection(this.collectionName).doc(id).set(initialData);
           return { 
             ...initialData, 
@@ -210,7 +219,7 @@ class FirestoreWrapper {
         return null;
       }
 
-      const docId = doc.id || doc._id;
+      const docId = doc._id;
 
       // Handle increment
       if (incData) {
@@ -326,4 +335,15 @@ export const AgentRequestModel = new FirestoreWrapper('agent_requests');
 export const AIAgentModel = new FirestoreWrapper('ai_agents');
 export const ScrapedSchemeModel = new FirestoreWrapper('scraped_schemes');
 export const AuditLogModel = new FirestoreWrapper('audit_logs');
+export const ProcessedSchemeModel = new FirestoreWrapper('processed_schemes');
+export const ScrapeJobModel = new FirestoreWrapper('scrape_jobs');
+
+// MVP Ecosystem Models
+export const AgentSubscriptionModel = new FirestoreWrapper('agent_subscriptions');
+export const AgentWalletModel       = new FirestoreWrapper('agent_wallets');
+export const CommissionModel        = new FirestoreWrapper('commissions');
+export const TransactionModel       = new FirestoreWrapper('transactions');
+export const WithdrawalModel        = new FirestoreWrapper('withdrawals');
+export const SubscriptionPaymentModel = new FirestoreWrapper('subscription_payments');
+
 export const connect = async () => {}; // Mock for index.ts/db.ts lifecycle triggers if any

@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import { authMiddleware, optionalAuthMiddleware, AuthRequest } from '../middleware/auth.js';
-import { getSchemeRecommendations, chatWithAssistant, summarizeScheme, checkEligibility } from '../services/gemini.js';
+import { getSchemeRecommendations, chatWithAssistant, summarizeScheme, checkEligibility, generateCitizenReport, generateSmartCitizenReport } from '../services/gemini.js';
 import { UserModel, SchemeModel, ScrapedSchemeModel } from '../models/index.js';
+
 
 const router = Router();
 
@@ -128,6 +129,66 @@ router.post('/check-eligibility/:schemeId', async (req: AuthRequest, res: Respon
       confidence: 'low', 
       explanation: 'We encountered an AI connectivity issue. Please refer to the eligibility criteria manually below.' 
     });
+  }
+});
+
+
+// Public: Generate a full personalized citizen report
+router.post('/report', async (req: AuthRequest, res: Response) => {
+  try {
+    let userProfile: any = {};
+    if (req.userId) {
+      const user = await UserModel.findOne({ id: req.userId });
+      userProfile = user?.toObject() || {};
+    } else if (req.body.profile) {
+      userProfile = req.body.profile;
+    }
+
+    const allSchemes = await SchemeModel.find({});
+    const report = await generateCitizenReport(userProfile, allSchemes.map(s => s.toObject()));
+    res.json({ report });
+  } catch (err: any) {
+    console.error('[AI Report Error]', err.message || err);
+    res.status(500).json({ error: 'Failed to generate citizen report' });
+  }
+});
+
+// ─── Smart Eligibility Report ────────────────────────────────────────────────
+// Validates that any 2 meaningful profile fields are present before proceeding.
+// Returns: topMatches, partialMatches, profileCompleteness, missingFields, agentEscalation
+router.post('/smart-report', async (req: AuthRequest, res: Response) => {
+  try {
+    let rawProfile: any = {};
+
+    if (req.userId) {
+      const user = await UserModel.findOne({ id: req.userId });
+      rawProfile = user?.toObject() || {};
+    } else if (req.body.profile) {
+      rawProfile = req.body.profile;
+    }
+
+    // Normalize income field (front-end may send `income` instead of `annualIncome`)
+    const userProfile = {
+      ...rawProfile,
+      annualIncome: rawProfile.annualIncome ?? (rawProfile.income ? Number(rawProfile.income) : undefined),
+      age: rawProfile.age ? Number(rawProfile.age) : undefined,
+    };
+
+    // ── Progressive Validation: Allow any number of fields ───────────────────
+    const keyFields = ['age', 'state', 'occupation', 'annualIncome', 'category', 'gender', 'educationLevel', 'maritalStatus'];
+    const filledCount = keyFields.filter(k => {
+      const v = userProfile[k];
+      return v !== null && v !== undefined && v !== '' && v !== 0;
+    }).length;
+
+    const allSchemes = await SchemeModel.find({});
+    const report = await generateSmartCitizenReport(userProfile, allSchemes.map(s => s.toObject()));
+
+    res.json({ report });
+
+  } catch (err: any) {
+    console.error('[AI Smart Report Error]', err.message || err);
+    res.status(500).json({ error: 'Failed to generate eligibility report' });
   }
 });
 

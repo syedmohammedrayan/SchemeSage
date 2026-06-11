@@ -7,10 +7,20 @@ interface Application {
   userId: string;
   schemeId: string;
   schemeName: string;
-  status: 'draft' | 'submitted' | 'saved' | 'in_review' | 'approved' | 'rejected';
+  status: 'draft' | 'submitted' | 'saved' | 'in_review' | 'approved' | 'rejected' | 'document_pending';
   formData: any;
   documents: any[];
   trackingId?: string;
+  type?: 'free' | 'assisted';
+  paymentStatus?: 'pending' | 'paid' | 'failed';
+  agentId?: string;
+  agentDetails?: {
+    fullName: string;
+    mobile: string;
+    email: string;
+  };
+  notes?: string;
+  rejectionReason?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -9,6 +9,8 @@ import { Shield, UserPlus, Briefcase, Info } from "lucide-react";
 import { indianStates } from "@/data/schemes";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
+import { api } from "@/lib/api";
 
 const AdminRegister = () => {
   const [form, setForm] = useState({ 
@@ -20,8 +22,19 @@ const AdminRegister = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { register } = useAuth();
+  
+  const [activeStates, setActiveStates] = useState<string[]>([]);
+  useEffect(() => {
+    api.get(`/auth/active-states?t=${Date.now()}`).then((res: any) => {
+      if (res.states) setActiveStates(res.states);
+    }).catch(console.error);
+  }, []);
 
   const update = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
+
+  const isStateSupported = !form.state || 
+    activeStates.some(s => s.toLowerCase() === 'central' || s.toLowerCase() === 'all' || s.toLowerCase() === 'unassigned' || s.toLowerCase() === '') ||
+    activeStates.some(s => s.toLowerCase() === form.state.toLowerCase());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +58,7 @@ const AdminRegister = () => {
         title: "Registration Received", 
         description: "Your official license request is now pending government verification." 
       });
-      navigate("/login");
+      navigate("/agent/login");
     } catch (err: any) {
       toast({ 
         title: "Registration Failed", 
@@ -198,6 +211,11 @@ const AdminRegister = () => {
                     {indianStates.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {!isStateSupported && (
+                  <p className="text-red-400 text-[11px] mt-1.5 font-medium leading-tight">
+                    This platform is right now not available in your state.
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-slate-300">District</Label>
@@ -211,7 +229,7 @@ const AdminRegister = () => {
               </div>
             </div>
 
-            <Button type="submit" variant="accent" className="w-full h-12 text-lg shadow-lg shadow-accent/20" disabled={loading}>
+            <Button type="submit" variant="accent" className="w-full h-12 text-lg shadow-lg shadow-accent/20" disabled={loading || !isStateSupported}>
               {loading ? (
                 <span className="flex items-center gap-2">
                    <div className="animate-spin h-4 w-4 border-2 border-white/30 border-t-white rounded-full" />

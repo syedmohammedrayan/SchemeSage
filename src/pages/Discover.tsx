@@ -1,421 +1,671 @@
-import VoiceInput from "../components/VoiceInput";
-import SchemeCard from "../components/SchemeCard";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { categories, occupations, indianStates } from "@/data/schemes";
-import { Search, User, FileText, Shield, MapPin, Send, Star, Phone, CheckCircle, Sparkles, Mic, History, Info } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
-import { useSchemes, useSaveScheme } from "@/hooks/useSchemes";
-import { useAIRecommendations } from "@/hooks/useAI";
+import {
+  Search, User, ChevronDown, ChevronUp, CheckCircle2, XCircle,
+  Sparkles, FileText, AlertCircle, ArrowRight, Loader2, ExternalLink,
+  MessageSquare, BookOpen, Star
+} from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
-const Discover = () => {
-  const { user } = useAuth();
-  const { toast } = useToast();
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-  // Profile capture state
-  const [profile, setProfile] = useState({ 
-    age: "", 
-    gender: "", 
-    occupation: "", 
-    income: "", 
-    state: "", 
-    category: "", 
-    guestName: "", 
-    guestPhone: "" 
-  });
-  
-  const [searchQuery, setSearchQuery] = useState("");
-  const [agents, setAgents] = useState<any[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<any>(null);
-  const [agentDialog, setAgentDialog] = useState(false);
-  const [agentMessage, setAgentMessage] = useState("");
-  const [showRecommendations, setShowRecommendations] = useState(false);
-  const [selectedLang, setSelectedLang] = useState("en-IN");
+interface EligibilityDimension {
+  pass: boolean;
+  label: string;
+  detail: string;
+}
 
-  // Fetch agents based on selected state
-  useEffect(() => {
-    const activeState = profile.state;
-    if (activeState) {
-      api.get<any[]>(`/agents?location=${activeState}`)
-        .then(setAgents)
-        .catch(console.error);
+interface SchemeMatch {
+  scheme: any;
+  matchScore: number;
+  reason: string;
+  breakdown: EligibilityDimension[];
+  documents: string[];
+}
+
+interface PartialMatch {
+  scheme: any;
+  matchScore: number;
+  missingCriteria: string;
+}
+
+interface CitizenReport {
+  profileSummary: string;
+  topMatches: SchemeMatch[];
+  partialMatches: PartialMatch[];
+  generatedAt: string;
+}
+
+// ─── NLP Text Extraction ──────────────────────────────────────────────────────
+
+async function extractProfileFromText(text: string): Promise<any> {
+  try {
+    const result = await api.post<any>('/voice/transcribe', { text, language: 'en-IN' });
+    return result?.profile || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// ─── Eligibility Breakdown Badge ──────────────────────────────────────────────
+
+const BreakdownBadge = ({ dim }: { dim: EligibilityDimension }) => (
+  <div className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg border ${
+    dim.pass
+      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+      : 'bg-red-500/10 border-red-500/20 text-red-400'
+  }`}>
+    {dim.pass
+      ? <CheckCircle2 className="h-3 w-3 shrink-0" />
+      : <XCircle className="h-3 w-3 shrink-0" />
     }
-  }, [profile.state]);
+    {dim.detail}
+  </div>
+);
 
-  // Queries
-  const { data: schemes = [], isLoading: schemesLoading } = useSchemes(
-    searchQuery ? { search: searchQuery } : undefined
+// ─── Score Ring ───────────────────────────────────────────────────────────────
+
+const ScoreRing = ({ score }: { score: number }) => {
+  const color = score >= 75 ? '#22C55E' : score >= 50 ? '#F59E0B' : '#EF4444';
+  return (
+    <div className="relative h-14 w-14 shrink-0">
+      <svg viewBox="0 0 36 36" className="h-14 w-14 -rotate-90">
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e293b" strokeWidth="3" />
+        <circle
+          cx="18" cy="18" r="15.9" fill="none"
+          stroke={color} strokeWidth="3"
+          strokeDasharray={`${score} 100`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-sm font-black text-white">{score}%</span>
+      </div>
+    </div>
   );
-  const { data: recommendations, isLoading: recLoading, refetch: fetchRecs } = useAIRecommendations(showRecommendations, selectedLang, profile, searchQuery);
+};
 
-  // Text-to-speech logic for accessibility
-  const speak = (text: string, lang: string) => {
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    speechSynthesis.speak(utterance);
-  };
+// ─── AI Analysis Loading Screen ───────────────────────────────────────────────
 
-  const handleVoice = (text: string, lang: string) => {
-    setSearchQuery(text);
-    setSelectedLang(lang);
-    setShowRecommendations(true);
-    toast({ title: "Voice Captured", description: `Searching for: \"${text}\"` });
-  };
+const AnalysisLoader = () => {
+  const steps = [
+    "Reading your profile...",
+    "Applying eligibility filters...",
+    "Checking state-specific schemes...",
+    "Running caste & income rules...",
+    "Semantic AI ranking...",
+    "Generating your report...",
+  ];
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setStep(s => (s + 1) % steps.length), 900);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div className="flex flex-col items-center justify-center py-28 gap-6">
+      <div className="relative h-24 w-24">
+        <div className="absolute inset-0 rounded-full bg-orange-500/10 animate-ping" />
+        <div className="relative h-24 w-24 rounded-full bg-[#0F172A] border-2 border-[#F97316]/40 flex items-center justify-center">
+          <Sparkles className="h-10 w-10 text-[#F97316] animate-pulse" />
+        </div>
+      </div>
+      <div className="text-center">
+        <h3 className="text-2xl font-bold text-white mb-2">Analyzing 1,250+ Schemes</h3>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={step}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            className="text-[#94A3B8] text-lg"
+          >
+            {steps[step]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+      <div className="flex gap-1.5">
+        {steps.map((_, i) => (
+          <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'bg-[#F97316] w-6' : 'bg-white/10 w-1.5'}`} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Scheme Result Card ───────────────────────────────────────────────────────
+
+const SchemeResultCard = ({ match, rank }: { match: SchemeMatch; rank: number }) => {
+  const [expanded, setExpanded] = useState(rank <= 2);
+  const passed = match.breakdown?.filter(d => d.pass) || [];
+  const failed = match.breakdown?.filter(d => !d.pass) || [];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: rank * 0.08 }}
+    >
+      <Card className="bg-[#0F172A] border border-white/10 rounded-2xl overflow-hidden hover:border-[#F97316]/30 transition-all duration-200">
+        <CardContent className="p-0">
+          {/* Card Header */}
+          <div className="p-5 flex items-start gap-4">
+            <ScoreRing score={match.matchScore} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#F97316] bg-[#F97316]/10 border border-[#F97316]/20 px-2 py-0.5 rounded-sm">
+                  #{rank} Match
+                </span>
+                {match.matchScore >= 75 && (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-sm">
+                    Highly Eligible
+                  </span>
+                )}
+              </div>
+              <h3 className="font-black text-white text-base leading-tight">{match.scheme?.name}</h3>
+              <p className="text-xs text-[#94A3B8] mt-0.5">{match.scheme?.ministry}</p>
+            </div>
+          </div>
+
+          {/* Benefits Banner */}
+          <div className="mx-5 mb-4 bg-[#020617] rounded-xl px-4 py-3 border border-white/5">
+            <p className="text-xs text-[#94A3B8] uppercase tracking-widest font-semibold mb-0.5">Benefit</p>
+            <p className="text-white font-bold text-sm">{match.scheme?.benefits}</p>
+          </div>
+
+          {/* AI Reason */}
+          {match.reason && (
+            <div className="mx-5 mb-4 flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-[#F97316] shrink-0 mt-0.5" />
+              <p className="text-sm text-[#CBD5E1] italic leading-relaxed">{match.reason}</p>
+            </div>
+          )}
+
+          {/* Eligibility Breakdown Toggle */}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs font-semibold text-[#94A3B8] hover:bg-white/5 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+              {passed.length} passed · {failed.length > 0 ? `${failed.length} concern` : 'No concerns'}
+            </span>
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-5 pb-4 flex flex-wrap gap-2 border-t border-white/5 pt-4">
+                  {match.breakdown?.map((dim, i) => (
+                    <BreakdownBadge key={i} dim={dim} />
+                  ))}
+                </div>
+
+                {/* Documents */}
+                {match.documents && match.documents.length > 0 && (
+                  <div className="px-5 pb-4">
+                    <p className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5" /> Required Documents
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {match.documents.map((doc, i) => (
+                        <span key={i} className="text-xs bg-[#020617] border border-white/10 text-[#CBD5E1] px-2 py-1 rounded-lg">
+                          {doc}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Action Footer */}
+          <div className="p-4 pt-2 flex gap-3 border-t border-white/5">
+            <Link to={`/scheme/${match.scheme?.id}`} className="flex-1">
+              <Button className="w-full bg-white text-black hover:bg-slate-200 font-bold rounded-xl h-10 text-sm">
+                View Details <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+            <a href={match.scheme?.applyLink} target="_blank" rel="noopener noreferrer" className="flex-1">
+              <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/10 font-bold rounded-xl h-10 text-sm">
+                Apply Now <ExternalLink className="h-4 w-4 ml-1" />
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+const Discover = () => {
+  const { toast } = useToast();
+  const location = useLocation();
+
+  // Step flow: 'input' → 'loading' → 'results'
+  const [step, setStep] = useState<'input' | 'loading' | 'results'>('input');
+  const [nlpText, setNlpText] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [report, setReport] = useState<CitizenReport | null>(null);
+
+  const [profile, setProfile] = useState({
+    age: "",
+    gender: "",
+    occupation: "",
+    income: "",
+    state: "",
+    category: "",
+    minority: false,
+    disability: false,
+    ruralUrban: "",
+    maritalStatus: "",
+    educationLevel: "",
+  });
+
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (recommendations && recommendations.length > 0) {
-      const top = recommendations[0];
-      const message = `I found ${recommendations.length} schemes for you. Top match is ${top.scheme.name}`;
-      speak(message, selectedLang);
+    if (location.state && location.state.profile) {
+      const p = location.state.profile;
+      setProfile(prev => ({
+        ...prev,
+        age: p.age ? String(p.age) : prev.age,
+        state: p.state || prev.state,
+        occupation: p.occupation || prev.occupation,
+        income: p.annualIncome || p.income ? String(p.annualIncome || p.income) : prev.income,
+        category: p.category || prev.category,
+        gender: p.gender || prev.gender,
+      }));
+      setShowForm(true);
+      if (location.state.autoRun) {
+        // use a timeout to let state settle
+        setTimeout(() => {
+          handleAnalyzeWithProfile(p);
+        }, 500);
+      }
     }
-  }, [recommendations]);
+  }, [location.state]);
 
-  const findSchemes = () => {
-    if (!profile.age || !profile.state) {
-      toast({ title: "Incomplete Profile", description: "Please enter at least age and state for accurate matching.", variant: "destructive" });
+  const handleNlpExtract = async () => {
+    if (!nlpText.trim()) return;
+    setIsExtracting(true);
+    try {
+      const extracted = await extractProfileFromText(nlpText);
+      setProfile(prev => ({
+        ...prev,
+        age: extracted.age ? String(extracted.age) : prev.age,
+        state: extracted.state || prev.state,
+        occupation: extracted.occupation || prev.occupation,
+        income: extracted.income ? String(extracted.income) : prev.income,
+      }));
+      if (extracted.age || extracted.state || extracted.occupation) {
+        toast({
+          title: "Profile Extracted ✓",
+          description: "We filled in your details. Review and click 'Analyse My Eligibility'."
+        });
+        setShowForm(true);
+      }
+    } catch (e) {
+      toast({ title: "Could not extract profile", description: "Please fill the form manually.", variant: "destructive" });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    handleAnalyzeWithProfile(profile);
+  };
+
+  const handleAnalyzeWithProfile = async (profToUse: any) => {
+    if (!profToUse.age && !profToUse.state && !profToUse.occupation) {
+      toast({ title: "Tell us about yourself", description: "Enter at least your age, state, or occupation.", variant: "destructive" });
       return;
     }
-    setShowRecommendations(true);
-    // Scroll to results
-    const resultsElem = document.getElementById('results-section');
-    resultsElem?.scrollIntoView({ behavior: 'smooth' });
+
+    setStep('loading');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    try {
+      const data = await api.post<{ report: CitizenReport }>('/ai/report', {
+        profile: {
+          age: profToUse.age ? parseInt(profToUse.age) : undefined,
+          gender: profToUse.gender || undefined,
+          state: profToUse.state || undefined,
+          occupation: profToUse.occupation || undefined,
+          annualIncome: profToUse.annualIncome || profToUse.income ? parseInt(profToUse.annualIncome || profToUse.income) : undefined,
+          category: profToUse.category || undefined,
+          minority: profToUse.minority || undefined,
+          disability: profToUse.disability || undefined,
+          ruralUrban: profToUse.ruralUrban || undefined,
+          maritalStatus: profToUse.maritalStatus || undefined,
+          educationLevel: profToUse.educationLevel || undefined,
+        }
+      });
+      setReport(data.report);
+      setStep('results');
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch (e) {
+      toast({ title: "Analysis Failed", description: "Could not connect to the server. Please try again.", variant: "destructive" });
+      setStep('input');
+    }
   };
 
-  const handleAgentRequest = async () => {
-    if (!selectedAgent) return;
-    try {
-      await api.post("/agents/request", {
-        agentId: selectedAgent.id,
-        userName: profile.guestName || "Interested Citizen",
-        userPhone: profile.guestPhone || "",
-        message: agentMessage || "I need help with scheme applications."
-      });
-      toast({ title: "Request Sent!", description: `${selectedAgent.fullName} will contact you shortly.` });
-      setAgentDialog(false);
-      setAgentMessage("");
-      setSelectedAgent(null);
-    } catch (e) {
-      toast({ title: "Request Failed", description: "Could not send request. Please try again.", variant: "destructive" });
-    }
+  const resetAll = () => {
+    setStep('input');
+    setReport(null);
+    setNlpText("");
+    setProfile({ age: "", gender: "", occupation: "", income: "", state: "", category: "", minority: false, disability: false, ruralUrban: "", maritalStatus: "", educationLevel: "" });
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-white">
+    <div className="min-h-screen bg-[#020617] text-white">
       <Navbar />
-      
-      {/* Hero / Header Section */}
-      <div className="relative pt-12 pb-8 overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-accent/5 blur-[120px] rounded-full" />
-        <div className="container mx-auto px-4 relative z-10 text-center">
-          <Badge variant="outline" className="border-accent/30 text-accent mb-4 px-4 py-1 bg-accent/5 backdrop-blur-md">
-            <Sparkles className="h-3 w-3 mr-2" /> AI-Powered Discovery
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-heading font-bold mb-4 tracking-tight">
-            Find Your <span className="text-accent">Welfare Match</span>
-          </h1>
-          <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-            Speak or enter your details below. Our AI scans hundreds of government schemes to find the ones you are eligible for.
-          </p>
-        </div>
-      </div>
 
-      <main className="container mx-auto px-4 pb-20 space-y-12">
-        {/* Voice and Profile Capture Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* Left: Profile Form */}
-          <div className="lg:col-span-8 space-y-6">
-            <Card className="bg-slate-900/50 border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                 <FileText className="h-24 w-24" />
-              </div>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <User className="h-5 w-5 text-accent" /> Personalized Search
-                </CardTitle>
-                <CardDescription className="text-slate-400">
-                  Fill in your details for a tailored eligibility report.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">Age</Label>
-                     <Input 
-                      type="number" 
-                      placeholder="e.g. 25" 
-                      value={profile.age} 
-                      onChange={(e) => setProfile({ ...profile, age: e.target.value })} 
-                      className="bg-slate-800/50 border-white/10 focus:border-accent text-white" 
-                     />
-                   </div>
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">Gender</Label>
-                     <Select value={profile.gender} onValueChange={(v) => setProfile({ ...profile, gender: v })}>
-                       <SelectTrigger className="bg-slate-800/50 border-white/10 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
-                       <SelectContent className="bg-slate-900 border-white/10 text-white">
-                         <SelectItem value="male">Male</SelectItem>
-                         <SelectItem value="female">Female</SelectItem>
-                         <SelectItem value="other">Other</SelectItem>
-                       </SelectContent>
-                     </Select>
-                   </div>
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">State / Location</Label>
-                     <Select value={profile.state} onValueChange={(v) => setProfile({ ...profile, state: v })}>
-                       <SelectTrigger className="bg-slate-800/50 border-white/10 text-white"><SelectValue placeholder="Select State" /></SelectTrigger>
-                       <SelectContent className="bg-slate-900 border-white/10 text-white h-[300px]">
-                         {indianStates.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">Occupation</Label>
-                     <Select value={profile.occupation} onValueChange={(v) => setProfile({ ...profile, occupation: v })}>
-                       <SelectTrigger className="bg-slate-800/50 border-white/10 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
-                       <SelectContent className="bg-slate-900 border-white/10 text-white">
-                         {occupations.map((o) => <SelectItem key={o} value={o.toLowerCase()}>{o}</SelectItem>)}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">Annual Income (₹)</Label>
-                     <Input 
-                      type="number" 
-                      placeholder="e.g. 250000" 
-                      value={profile.income} 
-                      onChange={(e) => setProfile({ ...profile, income: e.target.value })} 
-                      className="bg-slate-800/50 border-white/10 focus:border-accent text-white" 
-                     />
-                   </div>
-                   <div className="space-y-2">
-                     <Label className="text-slate-300">Category</Label>
-                     <Select value={profile.category} onValueChange={(v) => setProfile({ ...profile, category: v })}>
-                       <SelectTrigger className="bg-slate-800/50 border-white/10 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
-                       <SelectContent className="bg-slate-900 border-white/10 text-white">
-                         {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                </div>
-                
-                <Button 
-                  onClick={findSchemes} 
-                  variant="accent" 
-                  size="lg" 
-                  className="w-full h-14 text-lg shadow-lg shadow-accent/20" 
-                  disabled={recLoading}
-                >
-                  <Search className="h-5 w-5 mr-2" /> 
-                  {recLoading ? "AI is matching your profile..." : "Generate My Scheme Report"}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Quick Search Bar */}
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-slate-500 group-focus-within:text-accent transition-colors" />
-              </div>
-              <Input 
-                placeholder="Or search by scheme name, tag, or ministry..." 
-                value={searchQuery} 
-                onChange={(e) => setSearchQuery(e.target.value)} 
-                className="h-14 pl-12 bg-slate-900/30 border-white/10 text-white text-lg focus:bg-slate-900/50 transition-all rounded-2xl"
-              />
-            </div>
-          </div>
-
-          {/* Right: Voice Input Section */}
-          <div className="lg:col-span-4 h-full">
-            <VoiceInput onResult={handleVoice} />
-          </div>
-        </div>
-
-        {/* Results Section */}
-        <section id="results-section" className="scroll-mt-24">
-          {showRecommendations && recommendations && recommendations.length > 0 && (
-            <div className="space-y-6 mb-12">
-               <div className="flex items-center gap-3">
-                 <div className="h-10 w-10 rounded-full bg-accent/20 flex items-center justify-center">
-                    <Sparkles className="h-5 w-5 text-accent" />
-                 </div>
-                 <div>
-                   <h2 className="text-2xl font-bold font-heading">AI Matches for You</h2>
-                   <p className="text-slate-400 text-sm">Ranked by eligibility probability</p>
-                 </div>
-               </div>
-               
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {recommendations.map((rec: any) => (
-                    <div key={rec.schemeId} className="transform transition-all hover:-translate-y-1">
-                      <SchemeCard
-                        scheme={rec.scheme}
-                        matchScore={rec.matchScore}
-                        matchReason={rec.reason}
-                      />
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
-          {(!showRecommendations || !recommendations?.length) && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold font-heading flex items-center gap-2">
-                <History className="h-6 w-6 text-slate-500" /> 
-                {searchQuery ? `Search Results for \"${searchQuery}\"` : "All Regional Schemes"}
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {schemesLoading ? (
-                  Array(6).fill(0).map((_, i) => (
-                    <div key={i} className="h-80 bg-slate-900/30 animate-pulse rounded-2xl border border-white/5" />
-                  ))
-                ) : schemes.length === 0 ? (
-                  <div className="col-span-full py-20 text-center bg-slate-900/20 rounded-3xl border border-dashed border-white/10">
-                     <Search className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-                     <p className="text-slate-500">No schemes found for your current filters.</p>
-                     <Button variant="link" className="text-accent" onClick={() => { setSearchQuery(""); setShowRecommendations(false); }}>Reset Search</Button>
-                  </div>
-                ) : (
-                  schemes.map((scheme: any) => (
-                    <SchemeCard key={scheme.id} scheme={scheme} />
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Professional Assistance Section */}
-        {agents && agents.length > 0 && (
-          <section className="bg-slate-900/30 rounded-3xl p-8 border border-white/5">
-             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-               <div>
-                  <h2 className="text-2xl font-bold font-heading flex items-center gap-2">
-                    <Shield className="h-6 w-6 text-accent" /> Connect with Professional Agents
-                  </h2>
-                  <p className="text-slate-400 mt-1">Get free 1-on-1 assistance with these applications in {profile.state}.</p>
-               </div>
-               <Badge className="bg-accent/10 text-accent border-accent/20 px-4 py-1.5 h-fit">
-                 {agents.length} Verified Agents Online
-               </Badge>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {agents.map((agent) => (
-                  <Card key={agent.id} className="bg-slate-900/50 border-white/10 hover:border-accent/40 transition-all group">
-                     <CardContent className="p-6">
-                        <div className="flex justify-between items-start mb-4">
-                           <div className="bg-accent/10 h-12 w-12 rounded-2xl flex items-center justify-center font-bold text-accent text-xl">
-                             {agent.fullName?.charAt(0)}
-                           </div>
-                           <Badge variant="outline" className="text-[10px] text-green-400 border-green-500/20 bg-green-500/5 uppercase">
-                             <CheckCircle className="h-2.5 w-2.5 mr-1" /> Trust Verified
-                           </Badge>
-                        </div>
-                        <h4 className="font-bold text-lg">{agent.fullName}</h4>
-                        <div className="space-y-2 mt-3 mb-6">
-                           <div className="flex items-center gap-2 text-sm text-slate-400">
-                             <MapPin className="h-3.5 w-3.5 text-accent" /> {agent.state}{agent.district ? `, ${agent.district}` : ''}
-                           </div>
-                           <div className="flex items-center gap-2 text-sm text-slate-400">
-                             <Star className="h-3.5 w-3.5 text-amber-500" /> 
-                             Expertise: <span className="text-slate-200 capitalize">{agent.expertise}</span>
-                           </div>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          className="w-full border-white/10 hover:bg-accent hover:text-white transition-all rounded-xl"
-                          onClick={() => { setSelectedAgent(agent); setAgentMessage(""); setAgentDialog(true); }}
-                        >
-                          <Phone className="h-4 w-4 mr-2" /> Request Callback
-                        </Button>
-                     </CardContent>
-                  </Card>
-                ))}
-             </div>
-          </section>
+      {/* Loading State */}
+      <AnimatePresence>
+        {step === 'loading' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="min-h-screen flex items-center justify-center pt-20"
+          >
+            <AnalysisLoader />
+          </motion.div>
         )}
-      </main>
+      </AnimatePresence>
+
+      {/* Input State */}
+      <AnimatePresence>
+        {step === 'input' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pt-28 pb-20"
+          >
+            <div className="container mx-auto px-6 max-w-3xl">
+              {/* Header */}
+              <div className="text-center mb-12">
+                <span className="inline-flex items-center rounded-full bg-[#F97316]/10 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-[#F97316] border border-[#F97316]/20 mb-6">
+                  <Sparkles className="h-3 w-3 mr-2" /> Government Scheme Eligibility Checker
+                </span>
+                <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-4">
+                  Find Government Schemes <span className="text-[#F97316]">You May Be Eligible For</span>
+                </h1>
+                <p className="text-[#94A3B8] text-xl leading-relaxed max-w-xl mx-auto">
+                  Provide details about your education, occupation, income, category and location to discover government schemes relevant to your profile.
+                </p>
+              </div>
+
+              {/* NLP Input Box */}
+              <div className="bg-[#0F172A] border border-white/10 rounded-3xl p-8 mb-6 shadow-2xl">
+                <label className="block text-sm font-bold text-[#CBD5E1] mb-3">
+                  <MessageSquare className="inline h-4 w-4 mr-2 text-[#F97316]" />
+                  Describe yourself in your own words
+                </label>
+                <div className="flex gap-3">
+                  <textarea
+                    value={nlpText}
+                    onChange={(e) => setNlpText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNlpExtract(); } }}
+                    placeholder='e.g. "I am a 24 year old SC engineering student from Telangana with annual income of 1.2 lakhs"'
+                    className="flex-1 bg-[#020617] border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-[#475569] text-base focus:outline-none focus:border-[#F97316]/50 transition-colors resize-none"
+                    rows={3}
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <p className="text-xs text-[#475569]">Press Enter or click Extract to auto-fill your profile</p>
+                  <Button
+                    onClick={handleNlpExtract}
+                    disabled={!nlpText.trim() || isExtracting}
+                    className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold rounded-xl px-6"
+                  >
+                    {isExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="h-4 w-4 mr-2" />Extract Profile</>}
+                  </Button>
+                </div>
+
+                <button
+                  onClick={() => setShowForm(!showForm)}
+                  className="mt-6 flex items-center gap-2 text-sm text-[#94A3B8] hover:text-white transition-colors"
+                >
+                  <User className="h-4 w-4" />
+                  {showForm ? 'Hide' : 'Or fill details manually'}
+                  {showForm ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+
+                {/* Manual Form */}
+                <AnimatePresence>
+                  {showForm && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6 pt-6 border-t border-white/5">
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Age</Label>
+                          <Input type="number" placeholder="e.g. 24" value={profile.age} onChange={e => setProfile({...profile, age: e.target.value})} className="bg-[#020617] border-white/10 text-white focus:border-[#F97316]/50 rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Gender</Label>
+                          <Select value={profile.gender} onValueChange={v => setProfile({...profile, gender: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">State</Label>
+                          <Select value={profile.state} onValueChange={v => setProfile({...profile, state: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select State" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white h-[280px]">
+                              {indianStates.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Occupation</Label>
+                          <Select value={profile.occupation} onValueChange={v => setProfile({...profile, occupation: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                              {occupations.map(o => <SelectItem key={o} value={o.toLowerCase()}>{o}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Annual Income (₹)</Label>
+                          <Input type="number" placeholder="e.g. 120000" value={profile.income} onChange={e => setProfile({...profile, income: e.target.value})} className="bg-[#020617] border-white/10 text-white focus:border-[#F97316]/50 rounded-xl" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Category</Label>
+                          <Select value={profile.category} onValueChange={v => setProfile({...profile, category: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                              {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Area Type</Label>
+                          <Select value={profile.ruralUrban} onValueChange={v => setProfile({...profile, ruralUrban: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                              <SelectItem value="rural">Rural</SelectItem>
+                              <SelectItem value="urban">Urban</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-[#94A3B8] uppercase tracking-widest font-bold">Marital Status</Label>
+                          <Select value={profile.maritalStatus} onValueChange={v => setProfile({...profile, maritalStatus: v})}>
+                            <SelectTrigger className="bg-[#020617] border-white/10 text-white rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                              <SelectItem value="single">Single</SelectItem>
+                              <SelectItem value="married">Married</SelectItem>
+                              <SelectItem value="widow">Widow</SelectItem>
+                              <SelectItem value="divorced">Divorced</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-end gap-4 pb-1">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={profile.disability} onChange={e => setProfile({...profile, disability: e.target.checked})} className="h-4 w-4 accent-orange-500" />
+                            <span className="text-sm text-[#CBD5E1]">Disability</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={profile.minority} onChange={e => setProfile({...profile, minority: e.target.checked})} className="h-4 w-4 accent-orange-500" />
+                            <span className="text-sm text-[#CBD5E1]">Minority</span>
+                          </label>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <Button
+                onClick={handleAnalyze}
+                className="w-full h-16 text-lg font-black bg-[#F97316] hover:bg-[#EA580C] text-white rounded-2xl border-0 shadow-xl shadow-[#F97316]/20"
+              >
+                <Sparkles className="h-5 w-5 mr-3" />
+                Analyse My Eligibility
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Results State */}
+      <AnimatePresence>
+        {step === 'results' && report && (
+          <motion.div
+            ref={resultsRef}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="pt-28 pb-20"
+          >
+            <div className="container mx-auto px-6 max-w-4xl">
+
+              {/* Profile Summary Banner */}
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-r from-[#F97316]/20 to-[#0F172A] border border-[#F97316]/20 rounded-3xl p-8 mb-10 shadow-2xl"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="inline-flex items-center rounded-full bg-[#F97316]/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-[#F97316] border border-[#F97316]/20 mb-4">
+                      <Sparkles className="h-3 w-3 mr-2" /> Your Personalized Report
+                    </span>
+                    <p className="text-[#E2E8F0] text-xl leading-relaxed max-w-xl">
+                      {report.profileSummary}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-4xl font-black text-white">{report.topMatches?.length || 0}</div>
+                    <div className="text-[#94A3B8] text-sm">Eligible Schemes</div>
+                  </div>
+                </div>
+                <div className="mt-6 flex gap-4">
+                  <Button onClick={resetAll} variant="outline" className="border-white/20 text-white hover:bg-white/10 rounded-xl">
+                    ← Refine Profile
+                  </Button>
+                </div>
+              </motion.div>
+
+              {/* Top Matches */}
+              {report.topMatches && report.topMatches.length > 0 && (
+                <div className="mb-12">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Star className="h-6 w-6 text-yellow-400" />
+                    <h2 className="text-2xl font-black text-white">Top Eligible Schemes</h2>
+                  </div>
+                  <div className="space-y-4">
+                    {report.topMatches.map((match, i) => (
+                      <SchemeResultCard key={match.scheme?.id || i} match={match} rank={i + 1} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Partial Matches */}
+              {report.partialMatches && report.partialMatches.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <AlertCircle className="h-6 w-6 text-amber-400" />
+                    <div>
+                      <h2 className="text-2xl font-black text-white">Near-Miss Schemes</h2>
+                      <p className="text-[#94A3B8] text-sm">You could qualify with minor adjustments</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {report.partialMatches.map((match, i) => (
+                      <motion.div
+                        key={match.scheme?.id || i}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="bg-[#0F172A] border border-amber-500/10 rounded-2xl p-5 flex items-center gap-4"
+                      >
+                        <AlertCircle className="h-8 w-8 text-amber-400 shrink-0" />
+                        <div className="flex-1">
+                          <p className="font-bold text-white">{match.scheme?.name}</p>
+                          <p className="text-sm text-amber-400/80 mt-0.5">
+                            <span className="font-semibold">Concern: </span>{match.missingCriteria}
+                          </p>
+                        </div>
+                        <Link to={`/scheme/${match.scheme?.id}`}>
+                          <Button variant="outline" className="border-white/10 text-white hover:bg-white/10 rounded-xl text-sm shrink-0">
+                            <BookOpen className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        </Link>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.topMatches?.length === 0 && (
+                <div className="text-center py-20 bg-[#0F172A] rounded-3xl border border-white/5">
+                  <AlertCircle className="h-16 w-16 text-amber-400 mx-auto mb-4" />
+                  <h3 className="text-2xl font-bold text-white mb-3">No Direct Matches Found</h3>
+                  <p className="text-[#94A3B8] mb-6">Try adding more profile details for better results.</p>
+                  <Button onClick={resetAll} className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold rounded-xl px-8">
+                    Refine Profile
+                  </Button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Footer />
-
-      {/* Agent Request Modal */}
-      <Dialog open={agentDialog} onOpenChange={setAgentDialog}>
-        <DialogContent className="bg-slate-900 border-white/10 text-white max-w-md rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-2xl font-bold">
-              <Phone className="h-6 w-6 text-accent" /> Professional Quote
-            </DialogTitle>
-            <DialogDescription className="text-slate-400 text-base">
-              Request a free callback from <span className="text-white font-semibold">{selectedAgent?.fullName}</span>.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-6 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Your Full Name</Label>
-                <Input
-                  placeholder="e.g. Rahul Kumar"
-                  value={profile.guestName}
-                  onChange={(e) => setProfile({ ...profile, guestName: e.target.value })}
-                  className="bg-slate-800/50 border-white/10"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-300">Contact Number</Label>
-                <Input
-                  placeholder="e.g. 9876543210"
-                  value={profile.guestPhone}
-                  onChange={(e) => setProfile({ ...profile, guestPhone: e.target.value })}
-                  className="bg-slate-800/50 border-white/10"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-slate-300">How can {selectedAgent?.fullName} help you?</Label>
-              <Textarea
-                placeholder="E.g. I need help finding eligible health schemes for my family."
-                value={agentMessage}
-                onChange={(e) => setAgentMessage(e.target.value)}
-                rows={4}
-                className="bg-slate-800/50 border-white/10 resize-none"
-              />
-            </div>
-
-            <div className="bg-accent/5 p-4 rounded-2xl border border-accent/10 flex items-start gap-3">
-               <Info className="h-5 w-5 text-accent shrink-0 mt-0.5" />
-               <p className="text-xs text-slate-400 leading-relaxed">
-                 By clicking send, you agree to share your contact details with the verified agent. They will reach out via call or WhatsApp.
-               </p>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 border-white/10" onClick={() => setAgentDialog(false)}>Cancel</Button>
-            <Button variant="accent" className="flex-1 shadow-lg shadow-accent/20" onClick={handleAgentRequest}>
-               <Send className="h-4 w-4 mr-2" /> Send Request
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

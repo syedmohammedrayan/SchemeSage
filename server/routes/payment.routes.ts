@@ -1,55 +1,66 @@
-import { Router } from "express";
-import Razorpay from "razorpay";
-import crypto from "crypto";
-import { ApplicationModel } from '../models/index.js';
+import { Router, Response } from 'express';
+import { authMiddleware, AuthRequest } from '../middleware/auth.js';
+import { createOrder, verifyPayment, getPaymentHistory } from '../services/payment.service.js';
+import { validate, CreateOrderSchema, VerifyPaymentSchema } from '../validators/index.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
-const instance = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY || "rzp_test_mock_key123",
-  key_secret: process.env.RAZORPAY_SECRET || "mock_secret_abc123",
-});
-
-router.post("/create-order", async (req, res) => {
+/**
+ * POST /api/payment/create-order
+ * Creates a Razorpay payment order for assisted application.
+ * Requires authentication — citizen must be logged in.
+ */
+router.post('/create-order', authMiddleware, validate(CreateOrderSchema), async (req: AuthRequest, res: Response) => {
   try {
-    const options = {
-      amount: 29900, // ₹299.00
-      currency: "INR",
-      receipt: `receipt_order_${Date.now()}`
-    };
-    
-    try {
-      const order = await instance.orders.create(options);
-      res.json(order);
-    } catch (razorpayErr) {
-      console.log("Razorpay mock fallback initialized");
-      res.json({ id: `order_${Date.now()}`, amount: options.amount, currency: options.currency });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Failed to create order" });
+    const { applicationId, amount } = req.body;
+    const result = await createOrder(applicationId, req.userId!, amount);
+    res.json(result);
+  } catch (error: any) {
+    logger.error('[PaymentRoute] create-order failed', { error: error.message });
+    res.status(500).json({ error: error.message || 'Failed to create payment order' });
   }
 });
 
-router.post("/verify", async (req, res) => {
+/**
+ * POST /api/payment/verify
+ * Server-side verification of Razorpay payment using HMAC signature.
+ * Payment status is NEVER trusted from the frontend alone.
+ */
+router.post('/verify', authMiddleware, validate(VerifyPaymentSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { applicationId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    
-    if (applicationId) {
-      // In a real app check signature with crypto.createHmac
-      await ApplicationModel.findOneAndUpdate(
-        { id: applicationId }, 
-        { 
-          paymentStatus: 'paid', 
-          agentId: "agent-1", // Simple auto-assignment for now
-          status: 'in_review',
-          updatedAt: new Date()
-        }
-      );
+
+    const result = await verifyPayment(
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      applicationId,
+      req.userId!
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
     }
-    
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Verification Failed" });
+
+    res.json(result);
+  } catch (error: any) {
+    logger.error('[PaymentRoute] verify failed', { error: error.message });
+    res.status(500).json({ error: error.message || 'Payment verification failed' });
+  }
+});
+
+/**
+ * GET /api/payment/history
+ * Returns payment history for the authenticated user.
+ */
+router.get('/history', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const history = await getPaymentHistory(req.userId!);
+    res.json({ payments: history });
+  } catch (error: any) {
+    logger.error('[PaymentRoute] history failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch payment history' });
   }
 });
 

@@ -35,13 +35,15 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
     const schemes = await SchemeModel.find(query).sort({ createdAt: -1 });
     const scrapedSchemes = await ScrapedSchemeModel.find(query).sort({ createdAt: -1 });
 
-    // Combine and potentially rank if user profile exists
-    // Exclude mock schemes (s1, s2, etc.) from the citizen feed as requested
-    const realSchemes = schemes.filter((s: any) => !/^s\d+$/.test(s.id));
-    
+    // Provide the rich seeded schemes to the frontend instead of filtering them out
     let combined: any[] = [
-      ...realSchemes.map((s: any) => s.toObject()), 
-      ...scrapedSchemes.map((s: any) => ({ 
+      ...schemes.map((s: any) => s.toObject()), 
+      ...scrapedSchemes
+        .filter((s: any) => {
+          const name = s.name?.toLowerCase() || '';
+          return !name.includes('loading...') && !name.includes('view more') && !name.includes('sample real-time');
+        })
+        .map((s: any) => ({ 
         ...s.toObject(), 
         type: 'scraped',
         tags: s.tags || ['Government'],

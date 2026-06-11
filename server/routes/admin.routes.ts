@@ -11,6 +11,10 @@ import {
   ScrapedSchemeModel, 
   NotificationModel 
 } from '../models/index.js';
+import { getAdminStats, invalidateAnalyticsCache } from '../services/analytics.service.js';
+import { validate, UpdateStatusSchema, CreateSchemeSchema, BroadcastSchema } from '../validators/index.js';
+import { logger } from '../utils/logger.js';
+import { AppStatus } from '../constants/applicationStatus.js';
 
 const router = Router();
 
@@ -19,53 +23,36 @@ router.use(roleGuard('admin'));
 
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {
-    const allUsers = await UserModel.find({});
-    const allApps = await ApplicationModel.find({});
-    const dbSchemes = await SchemeModel.find({});
-    const allSchemes = dbSchemes.filter((s: any) => !/^s\d+$/.test(s.id));
+    // Real analytics from Firestore — NO hardcoded arrays
+    const stats = await getAdminStats();
 
-    const applicationsByStatus = {
-      saved: allApps.filter((a: any) => a.status === 'saved').length,
-      started: allApps.filter((a: any) => a.status === 'started').length,
-      submitted: allApps.filter((a: any) => a.status === 'submitted').length,
-      approved: allApps.filter((a: any) => a.status === 'approved').length,
-      rejected: allApps.filter((a: any) => a.status === 'rejected').length,
-    };
-
-    const mostViewedSchemes = [...allSchemes]
-      .sort((a: any, b: any) => b.views - a.views)
-      .slice(0, 5)
-      .map((s: any) => ({ id: s.id, name: s.name, views: s.views }));
-
-    const mostSavedSchemes = [...allSchemes]
-      .sort((a: any, b: any) => b.saves - a.saves)
-      .slice(0, 5)
-      .map((s: any) => ({ id: s.id, name: s.name, saves: s.saves }));
-
-    const monthlyTrends = [];
-    const months = ['Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
-    const baseUsers = [820, 1050, 1340, 1580, 1890, 2100];
-    const baseApps = [120, 180, 250, 310, 420, 380];
-    for (let i = 0; i < 6; i++) {
-      monthlyTrends.push({
-        month: months[i],
-        users: baseUsers[i],
-        applications: baseApps[i],
-      });
-    }
-
+    // Legacy shape compatibility (existing frontend expects these fields)
     res.json({
-      totalUsers: allUsers.filter((u: any) => u.role === 'citizen').length,
-      totalApplications: allApps.length,
-      totalSchemes: allSchemes.length,
-      pendingApplications: allApps.filter((a: any) => a.status === 'submitted').length,
-      applicationsByStatus,
-      mostViewedSchemes,
-      mostSavedSchemes,
-      monthlyTrends,
+      totalUsers: stats.totalUsers,
+      totalApplications: stats.totalApplications,
+      totalSchemes: stats.totalSchemes,
+      totalRevenue: stats.totalRevenue,
+      pendingApplications: stats.pendingApplications,
+      approvedApplications: stats.approvedApplications,
+      rejectedApplications: stats.rejectedApplications,
+      applicationsByStatus: {
+        saved: stats.statusBreakdown.find(s => s.name === 'Saved')?.value || 0,
+        started: stats.statusBreakdown.find(s => s.name === 'Started')?.value || 0,
+        submitted: stats.statusBreakdown.find(s => s.name === 'Submitted')?.value || 0,
+        approved: stats.statusBreakdown.find(s => s.name === 'Approved')?.value || 0,
+        rejected: stats.statusBreakdown.find(s => s.name === 'Rejected')?.value || 0,
+      },
+      monthlyTrends: stats.monthlyApplications.labels.map((month, i) => ({
+        month,
+        users: stats.monthlyUsers.values[i],
+        applications: stats.monthlyApplications.values[i],
+      })),
+      schemeWiseApplications: stats.schemeWiseApplications,
+      stateWiseDistribution: stats.stateWiseDistribution,
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Internal Server Error' });
+  } catch (error: any) {
+    logger.error('[AdminRoute] stats failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });
 
@@ -96,41 +83,42 @@ router.get('/applications', async (_req: AuthRequest, res: Response) => {
   }
 });
 
-router.put('/applications/:id/status', async (req: AuthRequest, res: Response) => {
+router.put('/applications/:id/status', validate(UpdateStatusSchema), async (req: AuthRequest, res: Response) => {
   try {
-    const { status } = req.body;
-    if (!['approved', 'rejected', 'submitted', 'started', 'saved'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
+    const { status, notes } = req.body;
 
     const app = await ApplicationModel.findOneAndUpdate(
       { id: req.params.id },
-      { status, updatedAt: new Date() }
+      { status, notes: notes || '', updatedAt: new Date() }
     );
     if (!app) return res.status(404).json({ error: 'Application not found' });
 
-    await NotificationModel.create({
-      id: crypto.randomUUID(),
-      userId: app.userId,
-      title: `Application ${status === 'approved' ? 'Approved' : 'Rejected'}`,
-      message: `Your application for ${app.schemeName} has been ${status}. ${status === 'approved' ? 'Congratulations!' : 'Please check the eligibility criteria and try again.'}`,
-      type: 'update',
-      read: false,
-    });
+    // Notify the citizen
+    if (app.userId) {
+      await NotificationModel.create({
+        id: crypto.randomUUID(),
+        userId: app.userId,
+        title: `Application ${status === AppStatus.APPROVED ? '✅ Approved' : status === AppStatus.REJECTED ? '❌ Rejected' : 'Updated'}`,
+        message: `Your application for "${app.schemeName}" status changed to: ${status}.${
+          notes ? ` Note: ${notes}` : ''
+        } ${status === AppStatus.APPROVED ? 'Congratulations!' : ''}`,
+        type: 'update',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
+    invalidateAnalyticsCache();
     res.json({ application: app });
-  } catch (error) {
+  } catch (error: any) {
+    logger.error('[AdminRoute] update status failed', { error: error.message });
     res.status(500).json({ error: 'Server Error' });
   }
 });
 
-router.post('/schemes', async (req: AuthRequest, res: Response) => {
+router.post('/schemes', validate(CreateSchemeSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { name, ministry, description, benefits, eligibility, documents, deadline, applyLink, tags } = req.body;
-
-    if (!name || !ministry || !description || !benefits) {
-      return res.status(400).json({ error: 'name, ministry, description, and benefits are required' });
-    }
 
     const scheme = await SchemeModel.create({
       id: crypto.randomUUID(),
@@ -139,26 +127,32 @@ router.post('/schemes', async (req: AuthRequest, res: Response) => {
       description,
       benefits,
       eligibility: eligibility || {},
-      documents: documents || [],
-      deadline,
+      documents: Array.isArray(documents) ? documents : [],
+      deadline: deadline || '',
       applyLink: applyLink || '#',
-      tags: tags || [],
+      tags: Array.isArray(tags) ? tags : [],
+      views: 0,
+      saves: 0,
+      createdAt: new Date().toISOString(),
     });
 
-    // Broadcast mapping
+    // Broadcast to all citizens
     const users = await UserModel.find({ role: 'citizen' });
     const notifs = users.map((u: any) => ({
       id: crypto.randomUUID(),
       userId: u.id,
-      title: `New Scheme: ${name}`,
+      title: `🆕 New Scheme: ${name}`,
       message: `A new scheme "${name}" from ${ministry} has been added. Check if you're eligible!`,
       type: 'new_scheme',
-      read: false
+      read: false,
+      createdAt: new Date().toISOString(),
     }));
-    await NotificationModel.insertMany(notifs);
+    if (notifs.length > 0) await NotificationModel.insertMany(notifs);
 
+    invalidateAnalyticsCache();
     res.status(201).json({ scheme });
-  } catch (error) {
+  } catch (error: any) {
+    logger.error('[AdminRoute] create scheme failed', { error: error.message });
     res.status(500).json({ error: 'Server Error' });
   }
 });
@@ -183,12 +177,9 @@ router.delete('/schemes/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/notifications/broadcast', async (req: AuthRequest, res: Response) => {
+router.post('/notifications/broadcast', validate(BroadcastSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { title, message, type } = req.body;
-    if (!title || !message) {
-      return res.status(400).json({ error: 'title and message are required' });
-    }
     
     const users = await UserModel.find({ role: 'citizen' });
     const notifs = users.map((u: any) => ({
@@ -197,12 +188,15 @@ router.post('/notifications/broadcast', async (req: AuthRequest, res: Response) 
       title,
       message,
       type: type || 'system',
-      read: false
+      read: false,
+      createdAt: new Date().toISOString(),
     }));
-    await NotificationModel.insertMany(notifs);
+    if (notifs.length > 0) await NotificationModel.insertMany(notifs);
     
-    res.json({ success: true });
-  } catch (error) {
+    logger.info('[AdminRoute] Broadcast sent', { title, recipientCount: notifs.length });
+    res.json({ success: true, recipientCount: notifs.length });
+  } catch (error: any) {
+    logger.error('[AdminRoute] broadcast failed', { error: error.message });
     res.status(500).json({ error: 'Server Error' });
   }
 });

@@ -27,3 +27,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch and debug scripts
+scratch/
+debug_*.json
+scratch_*.*
+test_db.js
+check_users.js
+simple-test.ts
+test-scraper.ts

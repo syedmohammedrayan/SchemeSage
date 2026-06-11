@@ -104,7 +104,7 @@ router.delete("/:id", authMiddleware, async (req: AuthRequest, res) => {
     if (req.user?.role !== 'government') {
       return res.status(403).json({ error: "Agent management is restricted to Government officials." });
     }
-    const agentId = req.params.id;
+    const agentId = req.params.id as string;
     const agentDoc = await db.collection('users').doc(agentId).get();
     if (!agentDoc.exists) return res.status(404).json({ error: "Agent not found" });
 

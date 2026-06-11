@@ -12,3 +12,4 @@ langdetect
 spacy
 indic-nlp-library
 deep-translator
+google-genai

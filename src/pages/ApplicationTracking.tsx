@@ -9,8 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 
 const steps = [
   { id: 'submitted', label: 'Submitted', icon: FileText },
-  { id: 'in_review', label: 'In Review', icon: FileSearch },
-  { id: 'decision', label: 'Decision', icon: CheckCircle },
+  { id: 'in_review', label: 'In Progress', icon: FileSearch },
+  { id: 'decision', label: 'Completed', icon: CheckCircle },
 ];
 
 export default function ApplicationTracking() {

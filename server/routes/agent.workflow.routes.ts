@@ -105,7 +105,7 @@ router.post('/accept/:applicationId', async (req: AuthRequest, res: Response) =>
       { id: applicationId, status: AppStatus.SUBMITTED }, 
       { 
         agentId,
-        status: AppStatus.IN_REVIEW, 
+        status: AppStatus.SUBMITTED, 
         updatedAt: new Date().toISOString(),
         acceptedAt: new Date().toISOString(),
       }, 

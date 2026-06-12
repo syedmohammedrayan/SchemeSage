@@ -151,7 +151,7 @@ const AgentDashboard = () => {
   };
 
   const poolApps = applications.filter(a => a.status === 'submitted' && (!a.agentId || a.agentId === ""));
-  const activeApps = applications.filter(a => ['in_review'].includes(a.status) && a.agentId === agentId);
+  const activeApps = applications.filter(a => ['submitted', 'in_review'].includes(a.status) && a.agentId === agentId);
   const historyApps = applications.filter(a => ['approved', 'rejected'].includes(a.status) && a.agentId === agentId);
 
   const timeAgo = (dateStr: string) => {
@@ -459,8 +459,8 @@ const AgentDashboard = () => {
                           <CardTitle className="text-xl font-black text-white group-hover:text-accent transition-colors">{app.schemeName}</CardTitle>
                           <div className="flex items-center gap-3 mt-2">
                              <div className="bg-white/5 px-2 py-1 rounded text-[10px] font-black tracking-tighter text-slate-400">APP-ID: {app.id.split('-')[0].toUpperCase()}</div>
-                             <Badge className={app.status === 'in_review' ? "bg-info text-white" : "bg-warning text-black"} variant="secondary">
-                               {app.status.toUpperCase()}
+                             <Badge className={app.status === 'in_review' ? "bg-info text-white" : app.status === 'submitted' ? "bg-accent/20 text-accent border-0" : "bg-warning text-black"} variant="secondary">
+                               {app.status === 'in_review' ? 'IN PROGRESS' : app.status.toUpperCase()}
                              </Badge>
                           </div>
                         </div>
@@ -502,16 +502,23 @@ const AgentDashboard = () => {
                       </div>
                       
                       <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-white/5">
-                        {app.status !== 'in_review' && (
-                          <Button className="flex-1 sm:flex-none h-12 bg-white text-black hover:bg-slate-200 font-bold px-8 rounded-xl transition-all" onClick={() => updateStatus(app.id, 'in_review')}>
-                            <PlayCircle className="h-4 w-4 mr-2" /> Start Processing
+                        <Button variant="outline" className="flex-1 sm:flex-none h-12 border-white/10 hover:bg-white/5 text-white font-bold px-8 rounded-xl transition-all" asChild>
+                          <Link to={`/tracking/${app.id}`} target="_blank">
+                            <FileText className="h-4 w-4 mr-2" /> Details
+                          </Link>
+                        </Button>
+                        {app.status === 'submitted' && (
+                          <Button className="flex-1 sm:flex-none h-12 bg-blue-600 hover:bg-blue-500 text-white font-bold px-8 rounded-xl transition-all shadow-lg shadow-blue-900/20" onClick={() => updateStatus(app.id, 'in_review')}>
+                            <PlayCircle className="h-4 w-4 mr-2" /> Mark In Progress
                           </Button>
                         )}
-                        <Button className="flex-1 sm:flex-none h-12 bg-green-600 hover:bg-green-500 text-white font-bold px-8 rounded-xl shadow-lg shadow-green-900/20" onClick={() => updateStatus(app.id, 'approved')}>
-                          <CheckCircle className="h-4 w-4 mr-2" /> Verify & Approve
-                        </Button>
+                        {app.status === 'in_review' && (
+                          <Button className="flex-1 sm:flex-none h-12 bg-green-600 hover:bg-green-500 text-white font-bold px-8 rounded-xl shadow-lg shadow-green-900/20" onClick={() => updateStatus(app.id, 'approved')}>
+                            <CheckCircle className="h-4 w-4 mr-2" /> Complete
+                          </Button>
+                        )}
                         <Button className="flex-1 sm:flex-none h-12 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 font-bold px-8 rounded-xl transition-all" onClick={() => updateStatus(app.id, 'rejected')}>
-                          <XCircle className="h-4 w-4 mr-2" /> Mark Deficient
+                          <XCircle className="h-4 w-4 mr-2" /> Reject
                         </Button>
                       </div>
                     </CardContent>

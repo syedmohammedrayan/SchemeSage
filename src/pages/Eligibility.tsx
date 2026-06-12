@@ -9,17 +9,10 @@ import Footer from "@/components/Footer";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, MapPin, Briefcase, IndianRupee, ExternalLink, ArrowRight, ShieldCheck, CheckCircle2, Mic, FileText, Loader2 } from "lucide-react";
+import { User, MapPin, Briefcase, IndianRupee, ExternalLink, ArrowRight, ShieldCheck, CheckCircle2, Mic, FileText, Loader2, MessageSquare, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-const INDIAN_STATES = [
-  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
-  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
-  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
-  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
-  "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
-];
+import { categories, occupations, indianStates } from "@/data/schemes";
 
 const Eligibility = () => {
   const { toast } = useToast();
@@ -35,14 +28,48 @@ const Eligibility = () => {
   }, [searchParams]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [nlpText, setNlpText] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
   
   const [manualProfile, setManualProfile] = useState({
     age: '',
     gender: '',
     state: '',
     occupation: '',
-    income: ''
+    income: '',
+    category: '',
+    maritalStatus: '',
+    ruralUrban: '',
+    disability: false,
+    minority: false
   });
+
+  const handleNlpExtract = async () => {
+    if (!nlpText.trim()) return;
+    setIsExtracting(true);
+    try {
+      const result = await api.post<any>('/voice/transcribe', { text: nlpText, language: 'en-IN' });
+      const extracted = result?.profile || {};
+      setManualProfile(prev => ({
+        ...prev,
+        age: extracted.age ? String(extracted.age) : prev.age,
+        state: extracted.state || prev.state,
+        occupation: extracted.occupation || prev.occupation,
+        income: extracted.income || extracted.annualIncome ? String(extracted.income || extracted.annualIncome) : prev.income,
+        category: extracted.category || prev.category,
+        gender: extracted.gender || prev.gender,
+        maritalStatus: extracted.maritalStatus || prev.maritalStatus,
+        ruralUrban: extracted.ruralUrban || prev.ruralUrban,
+        disability: extracted.disability !== undefined ? extracted.disability : prev.disability,
+        minority: extracted.minority !== undefined ? extracted.minority : prev.minority,
+      }));
+      toast({ title: "Profile Extracted ✓", description: "Details filled in. Review and check eligibility." });
+    } catch (e) {
+      toast({ title: "Extraction Failed", description: "Could not extract profile. Please fill manually.", variant: "destructive" });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   const handleVoiceResult = async (text: string, language: string) => {
     setLoading(true);
@@ -100,7 +127,12 @@ const Eligibility = () => {
         gender: manualProfile.gender || undefined,
         state: manualProfile.state || undefined,
         occupation: manualProfile.occupation || undefined,
-        income: parseInt(manualProfile.income) || undefined
+        annualIncome: parseInt(manualProfile.income) || undefined,
+        category: manualProfile.category || undefined,
+        ruralUrban: manualProfile.ruralUrban || undefined,
+        maritalStatus: manualProfile.maritalStatus || undefined,
+        disability: manualProfile.disability || undefined,
+        minority: manualProfile.minority || undefined,
       };
 
       const res: any = await api.post(`/ai/report`, { profile: profilePayload });
@@ -176,6 +208,36 @@ const Eligibility = () => {
               </h3>
             </div>
             <CardContent className="p-6 sm:p-8">
+              
+              {/* NLP Input Box */}
+              <div className="bg-[#0F172A] border border-white/10 rounded-3xl p-6 mb-8 shadow-inner">
+                <label className="block text-sm font-bold text-[#CBD5E1] mb-3">
+                  <MessageSquare className="inline h-4 w-4 mr-2 text-[#F97316]" />
+                  Describe yourself in your own words (Auto-fill)
+                </label>
+                <div className="flex gap-3">
+                  <textarea
+                    value={nlpText}
+                    onChange={(e) => setNlpText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNlpExtract(); } }}
+                    placeholder='e.g. "I am a 24 year old SC farmer from Telangana with annual income of 1.2 lakhs"'
+                    className="flex-1 bg-[#020617] border border-white/10 rounded-2xl px-5 py-4 text-white placeholder:text-[#475569] text-base focus:outline-none focus:border-[#F97316]/50 transition-colors resize-none"
+                    rows={2}
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <p className="text-xs text-[#475569]">Press Enter or click Extract to auto-fill</p>
+                  <Button
+                    onClick={handleNlpExtract}
+                    disabled={!nlpText.trim() || isExtracting}
+                    className="bg-[#F97316] hover:bg-[#EA580C] text-white font-bold rounded-xl px-6"
+                    type="button"
+                  >
+                    {isExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="h-4 w-4 mr-2" />Extract</>}
+                  </Button>
+                </div>
+              </div>
+
               <form onSubmit={handleManualSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
@@ -206,7 +268,7 @@ const Eligibility = () => {
                         <SelectValue placeholder="Select State" />
                       </SelectTrigger>
                       <SelectContent className="bg-[#0F172A] border-white/10 text-white max-h-[300px]">
-                        {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        {indianStates.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -217,12 +279,7 @@ const Eligibility = () => {
                         <SelectValue placeholder="Select Occupation" />
                       </SelectTrigger>
                       <SelectContent className="bg-[#0F172A] border-white/10 text-white">
-                        <SelectItem value="Farmer">Farmer</SelectItem>
-                        <SelectItem value="Student">Student</SelectItem>
-                        <SelectItem value="Entrepreneur">Entrepreneur / Business</SelectItem>
-                        <SelectItem value="Salaried">Salaried</SelectItem>
-                        <SelectItem value="Unemployed">Unemployed</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        {occupations.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -233,6 +290,67 @@ const Eligibility = () => {
                       value={manualProfile.income} onChange={e => setManualProfile({...manualProfile, income: e.target.value})}
                       className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]" placeholder="e.g. 250000"
                     />
+                  </div>
+
+                  {/* Extra Fields */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Category</label>
+                    <Select value={manualProfile.category} onValueChange={v => setManualProfile({...manualProfile, category: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select Category" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                        {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Area Type</label>
+                    <Select value={manualProfile.ruralUrban} onValueChange={v => setManualProfile({...manualProfile, ruralUrban: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select Area Type" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                        <SelectItem value="Rural">Rural</SelectItem>
+                        <SelectItem value="Urban">Urban</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Marital Status</label>
+                    <Select value={manualProfile.maritalStatus} onValueChange={v => setManualProfile({...manualProfile, maritalStatus: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select Marital Status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                        <SelectItem value="Single">Single</SelectItem>
+                        <SelectItem value="Married">Married</SelectItem>
+                        <SelectItem value="Divorced">Divorced</SelectItem>
+                        <SelectItem value="Widowed">Widowed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 flex flex-col justify-end">
+                    <div className="flex gap-4 items-center h-12">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={manualProfile.disability} 
+                          onChange={e => setManualProfile({...manualProfile, disability: e.target.checked})}
+                          className="w-4 h-4 rounded border-white/10 bg-[#0F172A] text-[#F97316] focus:ring-[#F97316]/50"
+                        />
+                        <span className="text-sm font-medium text-white">Disability</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={manualProfile.minority} 
+                          onChange={e => setManualProfile({...manualProfile, minority: e.target.checked})}
+                          className="w-4 h-4 rounded border-white/10 bg-[#0F172A] text-[#F97316] focus:ring-[#F97316]/50"
+                        />
+                        <span className="text-sm font-medium text-white">Minority</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
                 

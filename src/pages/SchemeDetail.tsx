@@ -78,7 +78,7 @@ const SchemeDetail = () => {
         setEligibilityResult(matchForThisScheme);
       } else {
         // If not in report, explicitly check
-        const checkRes: any = await api.post('/ai/eligibility', { schemeId: schemeData.id, profile: mockProfile });
+        const checkRes: any = await api.post(`/ai/check-eligibility/${schemeData.id}`, { profile: mockProfile });
         setEligibilityResult({ ...checkRes, matchScore: checkRes.eligible ? 50 : 0 });
       }
     } catch (e) {

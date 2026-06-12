@@ -32,6 +32,7 @@ import subscriptionRoutes from './routes/subscription.routes.js';
 import withdrawalRoutes from './routes/withdrawal.routes.js';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
 // Helmet sets secure HTTP headers (X-Content-Type, X-Frame-Options, etc.)
@@ -143,9 +144,9 @@ async function startServer() {
         logger.info('[Cron] Triggering scheduled AI scheme scraper...');
         try {
           const result = await runManagedScraper();
-          if (result && result.success && result.count > 0 && result.data) {
+          if (result && result.success && (result.count || 0) > 0 && result.data) {
             io.emit('NEW_SCHEME_SCRAPED', result.data);
-            logger.info('[Cron] Scraper completed', { count: result.count });
+            logger.info('[Cron] Scraper completed', { count: result.count || 0 });
           }
         } catch (err: any) {
           logger.error('[Cron] Scraper failed', { error: err.message });
@@ -157,7 +158,7 @@ async function startServer() {
         logger.info('[Boot] Performing initial global scheme sync...');
         try {
           const result = await runManagedScraper();
-          if (result && result.success && result.count > 0 && result.data) {
+          if (result && result.success && (result.count || 0) > 0 && result.data) {
             io.emit('NEW_SCHEME_SCRAPED', result.data);
           }
         } catch (err: any) {

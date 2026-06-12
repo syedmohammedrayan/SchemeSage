@@ -37,7 +37,6 @@ router.get('/applications/:agentId', async (req: AuthRequest, res: Response) => 
     // Query 1: Applications assigned to this specific agent
     const assignedApps = await ApplicationModel.find({
       agentId,
-      status: 'in_review',
     }).sort({ updatedAt: -1 });
 
     // Query 2: Unassigned submitted applications (the open pool — no $exists needed)

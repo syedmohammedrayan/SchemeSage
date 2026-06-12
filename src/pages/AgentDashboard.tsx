@@ -26,6 +26,7 @@ const AgentDashboard = () => {
   const [wallet, setWallet] = useState<any>({ availableBalance: 0, pendingEarnings: 0, totalEarned: 0 });
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<any[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
 
   // FIX: Removed dangerous 'agent-1' fallback ID.
   // If user is not authenticated, redirect to login immediately.
@@ -94,6 +95,9 @@ const AgentDashboard = () => {
 
           const wdData = await api.get<any>('/withdrawal/history');
           setWithdrawals(wdData.withdrawals || []);
+          
+          const ledData = await api.get<any[]>('/agents/ledger');
+          setLedger(ledData || []);
       } catch (e) {
           console.error("Failed to load overview data", e);
       }
@@ -236,13 +240,13 @@ const AgentDashboard = () => {
             </TabsTrigger>
             <TabsTrigger value="active" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">My Queue ({activeApps.length})</TabsTrigger>
             <TabsTrigger value="wallet" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
-              Wallet
+              Ledger & Wallet
             </TabsTrigger>
             <TabsTrigger value="assistance" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
               Help Centre
               {(pendingLeads.length + activeCases.length) > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center">{pendingLeads.length + activeCases.length}</span>}
             </TabsTrigger>
-            <TabsTrigger value="history" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">Archive</TabsTrigger>
+            <TabsTrigger value="history" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">History</TabsTrigger>
           </TabsList>
           
           <TabsContent value="overview" className="space-y-6">
@@ -351,29 +355,34 @@ const AgentDashboard = () => {
 
              <Card className="bg-slate-900 border-white/10 shadow-xl">
                 <CardHeader>
-                  <CardTitle className="text-lg font-bold text-white">Withdrawal History</CardTitle>
+                  <CardTitle className="text-xl font-black text-white">Payments Timeline</CardTitle>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Your complete financial ledger</p>
                 </CardHeader>
                 <CardContent>
-                   {withdrawals.length === 0 ? (
-                      <p className="text-center py-8 text-slate-500 text-sm">No withdrawal requests found.</p>
+                   {ledger.length === 0 ? (
+                      <p className="text-center py-8 text-slate-500 text-sm">No transactions yet.</p>
                    ) : (
                       <div className="space-y-4">
-                         {withdrawals.map((w, i) => (
-                            <div key={i} className="flex justify-between items-center p-4 bg-[#0f172a] rounded-xl border border-white/5">
+                         {ledger.map((l, i) => (
+                            <div key={i} className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 p-5 bg-[#0f172a] rounded-xl border border-white/5 hover:border-white/10 transition-colors">
                                <div className="flex items-center gap-4">
-                                  <div className="bg-white/5 p-3 rounded-lg"><Wallet className="h-5 w-5 text-slate-400" /></div>
+                                  <div className={`p-3 rounded-xl ${l.amount > 0 ? 'bg-green-500/10 text-green-500' : 'bg-slate-800 text-slate-400'}`}>
+                                    {l.type === 'commission' ? <IndianRupee className="h-6 w-6" /> : l.type === 'withdrawal' ? <Landmark className="h-6 w-6" /> : <Shield className="h-6 w-6" />}
+                                  </div>
                                   <div>
-                                     <p className="text-white font-bold">₹{w.amount / 100}</p>
-                                     <p className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</p>
+                                     <p className="text-white font-bold text-lg">{l.title}</p>
+                                     <p className="text-xs text-slate-400 mb-1">{l.description}</p>
+                                     <p className="text-[10px] font-mono text-slate-500">{new Date(l.createdAt).toLocaleString()}</p>
                                   </div>
                                </div>
-                               <Badge className={
-                                 w.status === 'paid' ? 'bg-green-500/20 text-green-500' :
-                                 w.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
-                                 'bg-yellow-500/20 text-yellow-500'
-                               }>
-                                 {w.status.toUpperCase()}
-                               </Badge>
+                               <div className="text-right flex sm:flex-col items-center sm:items-end justify-between">
+                                 <p className={`text-xl font-black ${l.amount > 0 ? 'text-green-500' : 'text-white'}`}>
+                                   {l.amount > 0 ? '+' : ''}₹{l.amount / 100}
+                                 </p>
+                                 <Badge variant="outline" className={`mt-2 border-white/10 text-[10px] uppercase font-black ${l.status === 'completed' || l.status === 'paid' ? 'text-green-500' : 'text-yellow-500'}`}>
+                                   {l.status}
+                                 </Badge>
+                               </div>
                             </div>
                          ))}
                       </div>
@@ -658,26 +667,52 @@ const AgentDashboard = () => {
           </TabsContent>
 
           <TabsContent value="history">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tight">Request History</h2>
+                  <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Complete archive of processed applications</p>
+                </div>
+                <Badge variant="outline" className="border-white/10 text-slate-400 font-black uppercase text-[10px] px-3 py-1">
+                  {historyApps.length} Processed
+                </Badge>
+              </div>
+
               <div className="grid gap-4">
                 {historyApps.length === 0 ? (
-                  <p className="text-center py-12 text-muted-foreground italic">No processed history.</p>
+                  <div className="text-center py-16 bg-[#020617] rounded-3xl border border-white/5 border-dashed">
+                     <FileText className="h-10 w-10 text-slate-700 mx-auto mb-3" />
+                     <p className="text-slate-400 font-bold">No history found.</p>
+                  </div>
                 ) : (
                   historyApps.map((app) => (
-                    <Card key={app.id} className="bg-[#020617] border border-white/5 opacity-70 group hover:opacity-100 transition-opacity">
-                      <CardHeader className="p-4 flex flex-row items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`h-10 w-10 rounded-full flex items-center justify-center ${app.status === 'approved' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                            {app.status === 'approved' ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                    <Card key={app.id} className="bg-[#020617] border border-white/10 shadow-lg group hover:border-white/20 transition-all">
+                      <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                        <div className="flex items-start gap-4">
+                          <div className={`mt-1 h-12 w-12 rounded-full flex shrink-0 items-center justify-center ${app.status === 'approved' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                            {app.status === 'approved' ? <CheckCircle className="h-6 w-6" /> : <XCircle className="h-6 w-6" />}
                           </div>
                           <div>
-                            <CardTitle className="text-md font-bold text-white">{app.schemeName}</CardTitle>
-                            <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">{app.userName || app.formData?.fullName} · {new Date(app.updatedAt).toLocaleDateString()}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                               <Badge className={app.status === 'approved' ? "bg-green-500 text-white font-black text-[10px] uppercase border-0 tracking-widest" : "bg-red-500 text-white font-black text-[10px] uppercase border-0 tracking-widest"}>
+                                 {app.status}
+                               </Badge>
+                               <span className="text-[10px] font-mono text-slate-500">ID: {app.id.substring(0,8)}</span>
+                            </div>
+                            <CardTitle className="text-xl font-black text-white">{app.schemeName}</CardTitle>
+                            <p className="text-sm font-bold text-slate-400 mt-1">{app.userName || app.formData?.fullName}</p>
                           </div>
                         </div>
-                        <Badge className={app.status === 'approved' ? "bg-green-900/30 text-green-400 border-green-800/30" : "bg-red-900/30 text-red-400 border-red-800/30"} variant="outline">
-                          {app.status.toUpperCase()}
-                        </Badge>
-                      </CardHeader>
+                        <div className="md:text-right bg-white/5 p-4 rounded-xl border border-white/5 w-full md:w-auto">
+                          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-1">Processing Completed On</p>
+                          <p className="text-sm font-bold text-white flex items-center md:justify-end gap-2">
+                             <Calendar className="h-4 w-4 text-accent" />
+                             {new Date(app.updatedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          <Button variant="link" className="text-accent mt-2 h-auto p-0 text-xs font-bold" asChild>
+                            <Link to={`/tracking/${app.id}`} target="_blank">View Application Record <ArrowUpRight className="h-3 w-3 ml-1"/></Link>
+                          </Button>
+                        </div>
+                      </CardContent>
                     </Card>
                   ))
                 )}

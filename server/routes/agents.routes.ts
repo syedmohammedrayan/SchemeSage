@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Router, Response } from "express";
 import { authMiddleware, optionalAuthMiddleware, AuthRequest } from "../middleware/auth.js";
 import { db, auth } from '../config/db.js';
-import { AgentRequestModel, NotificationModel, AuditLogModel } from '../models/index.js';
+import { AgentRequestModel, NotificationModel, AuditLogModel, TransactionModel, SubscriptionPaymentModel, WithdrawalModel } from '../models/index.js';
 
 const router = Router();
 
@@ -159,6 +159,63 @@ router.get("/earnings", authMiddleware, async (req: AuthRequest, res: Response) 
         const { getAgentEarnings } = await import('../services/commission.service.js');
         const earnings = await getAgentEarnings(req.userId!);
         res.json(earnings);
+    } catch(e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get Agent Ledger (Payments Timeline)
+router.get("/ledger", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const agentId = req.userId!;
+        const [transactions, subscriptions, withdrawals] = await Promise.all([
+            TransactionModel.find({ agentId }),
+            SubscriptionPaymentModel.find({ agentId }),
+            WithdrawalModel.find({ agentId })
+        ]);
+
+        const ledger: any[] = [];
+
+        transactions.forEach((t: any) => {
+            ledger.push({
+                id: t.id,
+                type: 'commission',
+                amount: t.amount,
+                title: 'Commission Earned',
+                description: t.description || 'Application processing fee',
+                status: t.status,
+                createdAt: t.createdAt
+            });
+        });
+
+        subscriptions.forEach((s: any) => {
+            ledger.push({
+                id: s.id,
+                type: 'subscription',
+                amount: -s.amount, // negative for purchases
+                title: 'Subscription Purchase',
+                description: `Plan: ${s.planKey.toUpperCase()}`,
+                status: s.status,
+                createdAt: s.createdAt
+            });
+        });
+
+        withdrawals.forEach((w: any) => {
+            ledger.push({
+                id: w.id,
+                type: 'withdrawal',
+                amount: -w.amount, // negative for withdrawals
+                title: 'Bank Withdrawal',
+                description: `Method: ${w.method}`,
+                status: w.status,
+                createdAt: w.createdAt
+            });
+        });
+
+        // Sort descending by date
+        ledger.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        res.json(ledger);
     } catch(e: any) {
         res.status(500).json({ error: e.message });
     }

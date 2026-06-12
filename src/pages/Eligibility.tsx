@@ -440,7 +440,7 @@ const Eligibility = () => {
                     const matchColor = isStrong ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20";
 
                     return (
-                      <Card key={match.schemeId} className="bg-[#020617] border-white/10 hover:border-[#F97316]/30 transition-all duration-300 shadow-xl overflow-hidden flex flex-col h-full group">
+                      <Card key={match.scheme?.id || Math.random()} className="bg-[#020617] border-white/10 hover:border-[#F97316]/30 transition-all duration-300 shadow-xl overflow-hidden flex flex-col h-full group">
                         
                         {/* Header */}
                         <div className="p-6 border-b border-white/5">
@@ -449,32 +449,28 @@ const Eligibility = () => {
                               {isStrong ? 'Strong Match' : 'Potential Match'} • {match.matchScore}%
                             </span>
                           </div>
-                          <h3 className="text-xl font-bold text-white mb-2 leading-tight group-hover:text-[#F97316] transition-colors">{match.schemeName}</h3>
+                          <h3 className="text-xl font-bold text-white mb-2 leading-tight group-hover:text-[#F97316] transition-colors">{match.scheme?.name}</h3>
                           <p className="text-sm font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#F97316]" /> {match.ministry || 'Government of India'}
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#F97316]" /> {match.scheme?.ministry || 'Government of India'}
                           </p>
                         </div>
 
                         {/* Body */}
                         <div className="p-6 flex-grow flex flex-col gap-5">
-                          {match.benefits && (
+                          {match.scheme?.benefits && (
                             <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                               <p className="text-[10px] font-black uppercase tracking-widest text-[#F97316] mb-2">Key Benefits</p>
-                              <p className="text-sm text-white font-medium leading-relaxed">{match.benefits}</p>
+                              <p className="text-sm text-white font-medium leading-relaxed">{match.scheme?.benefits}</p>
                             </div>
                           )}
 
-                          {match.reasons && match.reasons.length > 0 && (
+                          {match.reason && (
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8] mb-3">Why Recommended</p>
-                              <ul className="space-y-2">
-                                {match.reasons.map((r: string, idx: number) => (
-                                  <li key={idx} className="flex items-start gap-2.5 text-sm text-[#CBD5E1]">
-                                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                                    <span>{r}</span>
-                                  </li>
-                                ))}
-                              </ul>
+                              <div className="flex items-start gap-2.5 text-sm text-[#CBD5E1]">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                                <span>{match.reason}</span>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -484,14 +480,20 @@ const Eligibility = () => {
                           <Button 
                             variant="outline" 
                             className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-white h-12 rounded-xl font-bold"
-                            onClick={() => navigate(`/scheme/${match.schemeId}`)}
+                            onClick={() => navigate(`/scheme/${match.scheme?.id}`)}
                           >
                             View Details
                           </Button>
                           <Button 
                             variant="accent" 
                             className="flex-1 h-12 rounded-xl font-bold shadow-lg shadow-[#F97316]/20"
-                            onClick={() => navigate(`/apply/${match.schemeId}`)}
+                            onClick={() => {
+                              if (match.scheme?.applyLink) {
+                                window.open(match.scheme.applyLink, '_blank');
+                              } else {
+                                navigate(`/scheme/${match.scheme?.id}`);
+                              }
+                            }}
                           >
                             Apply Now <ArrowRight className="ml-2 h-4 w-4" />
                           </Button>

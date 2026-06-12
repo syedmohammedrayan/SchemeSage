@@ -12,8 +12,18 @@ import {
   Building2, Users, FileText, Calendar, ShieldCheck, 
   ExternalLink, ChevronLeft, ArrowRight, Share2, 
   Bookmark, CheckCircle2, XCircle, AlertTriangle, Sparkles,
-  RefreshCw, Loader2, IndianRupee, Mic, ClipboardList
+  RefreshCw, Loader2, IndianRupee, Mic, ClipboardList, X
 } from "lucide-react";
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
 
 const ScoreRing = ({ score }: { score: number }) => {
   const color = score >= 75 ? '#22C55E' : score >= 50 ? '#F59E0B' : '#EF4444';
@@ -43,6 +53,14 @@ const SchemeDetail = () => {
   const [loading, setLoading] = useState(true);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const [eligibilityResult, setEligibilityResult] = useState<any>(null);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualProfile, setManualProfile] = useState({
+    age: '',
+    gender: '',
+    state: '',
+    occupation: '',
+    income: ''
+  });
 
   useEffect(() => {
     fetchScheme();
@@ -52,7 +70,7 @@ const SchemeDetail = () => {
     try {
       setLoading(true);
       const res = await api.get<any>(`/schemes/${id}`);
-      const schemeData = res.scheme || res; // Fallback in case backend format changes
+      const schemeData = res.scheme || res;
       setScheme(schemeData);
       // Do NOT auto-check eligibility — user must provide their details first
     } catch (e) {
@@ -60,6 +78,52 @@ const SchemeDetail = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkEligibility = async (profile: any) => {
+    setEligibilityLoading(true);
+    try {
+      const profilePayload = {
+        age: parseInt(profile.age) || undefined,
+        gender: profile.gender || undefined,
+        state: profile.state || undefined,
+        occupation: profile.occupation || undefined,
+        income: parseInt(profile.income) || undefined
+      };
+
+      const res: any = await api.post(`/ai/report`, { profile: profilePayload });
+      
+      const allMatches = [...(res.report?.topMatches || []), ...(res.report?.partialMatches || [])];
+      const matchForThisScheme = allMatches.find((m: any) => m.scheme?.id === scheme?.id);
+      
+      if (matchForThisScheme) {
+        setEligibilityResult(matchForThisScheme);
+      } else {
+        // If not in report, explicitly check
+        const checkRes: any = await api.post(`/ai/check-eligibility/${scheme?.id || id}`, { profile: profilePayload });
+        setEligibilityResult({ ...checkRes, matchScore: checkRes.eligible ? 50 : 0 });
+      }
+      setShowManualForm(false);
+    } catch (e) {
+      console.error(e);
+      toast({ title: "Eligibility check failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setEligibilityLoading(false);
+    }
+  };
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualProfile.age && !manualProfile.state && !manualProfile.occupation) {
+      toast({ title: "Please fill at least one field", description: "We need some details to check eligibility.", variant: "destructive" });
+      return;
+    }
+    checkEligibility(manualProfile);
+  };
+
+  const handleRecheck = () => {
+    setEligibilityResult(null);
+    setShowManualForm(true);
   };
 
   if (loading) {
@@ -170,36 +234,194 @@ const SchemeDetail = () => {
               </Card>
             </div>
 
-            {/* AI Eligibility Panel — only shows prompt until user provides details */}
+            {/* AI Eligibility Panel */}
             <Card className="bg-gradient-to-br from-[#F97316]/10 to-[#0F172A] border-[#F97316]/20 overflow-hidden shadow-2xl">
               <div className="bg-[#F97316]/10 px-6 py-4 border-b border-[#F97316]/20 flex items-center justify-between">
                 <h3 className="font-black flex items-center gap-2 text-white text-lg">
                   <Sparkles className="h-5 w-5 text-[#F97316]" /> Your Eligibility Analysis
                 </h3>
+                {eligibilityLoading && <Loader2 className="h-4 w-4 text-[#F97316] animate-spin" />}
               </div>
               
               <CardContent className="p-6">
-                <div className="text-center py-8">
-                  <div className="mx-auto mb-6 h-16 w-16 rounded-full bg-[#F97316]/10 flex items-center justify-center">
-                    <ClipboardList className="h-8 w-8 text-[#F97316]" />
-                  </div>
-                  <h4 className="text-xl font-bold text-white mb-2">Enter Your Details First</h4>
-                  <p className="text-[#94A3B8] mb-6 max-w-md mx-auto">
-                    Tell us about yourself — your age, state, income, occupation — to get a personalized eligibility match for this scheme.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <Link to="/eligibility">
-                      <Button variant="accent" className="font-bold rounded-xl shadow-lg shadow-[#F97316]/20 h-12 px-6">
-                        <Mic className="h-4 w-4 mr-2" /> Use Voice Input
-                      </Button>
-                    </Link>
-                    <Link to="/eligibility">
-                      <Button variant="outline" className="font-bold rounded-xl border-white/10 hover:bg-white/5 text-white h-12 px-6">
+                {/* State 1: No result, no form — initial prompt */}
+                {!eligibilityResult && !showManualForm && !eligibilityLoading && (
+                  <div className="text-center py-8">
+                    <div className="mx-auto mb-6 h-16 w-16 rounded-full bg-[#F97316]/10 flex items-center justify-center">
+                      <ClipboardList className="h-8 w-8 text-[#F97316]" />
+                    </div>
+                    <h4 className="text-xl font-bold text-white mb-2">Enter Your Details First</h4>
+                    <p className="text-[#94A3B8] mb-6 max-w-md mx-auto">
+                      Tell us about yourself — your age, state, income, occupation — to get a personalized eligibility match for this scheme.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                      <Link to="/eligibility">
+                        <Button variant="accent" className="font-bold rounded-xl shadow-lg shadow-[#F97316]/20 h-12 px-6">
+                          <Mic className="h-4 w-4 mr-2" /> Use Voice Input
+                        </Button>
+                      </Link>
+                      <Button 
+                        variant="outline" 
+                        className="font-bold rounded-xl border-white/10 hover:bg-white/5 text-white h-12 px-6"
+                        onClick={() => setShowManualForm(true)}
+                      >
                         <ClipboardList className="h-4 w-4 mr-2" /> Fill Manually
                       </Button>
-                    </Link>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* State 2: Manual form visible */}
+                {showManualForm && !eligibilityLoading && (
+                  <form onSubmit={handleManualSubmit} className="space-y-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-lg font-bold text-white">Fill Your Details</h4>
+                      <button 
+                        type="button"
+                        onClick={() => setShowManualForm(false)}
+                        className="text-[#94A3B8] hover:text-white transition-colors p-1 rounded-lg hover:bg-white/5"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Age */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8]">Age</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          placeholder="e.g. 25"
+                          value={manualProfile.age}
+                          onChange={(e) => setManualProfile(p => ({ ...p, age: e.target.value }))}
+                          className="w-full h-11 px-4 rounded-xl bg-[#020617] border border-white/10 text-white placeholder-[#475569] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F97316]/50 focus:border-[#F97316]/50 transition-all"
+                        />
+                      </div>
+
+                      {/* Gender */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8]">Gender</label>
+                        <select
+                          value={manualProfile.gender}
+                          onChange={(e) => setManualProfile(p => ({ ...p, gender: e.target.value }))}
+                          className="w-full h-11 px-4 rounded-xl bg-[#020617] border border-white/10 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F97316]/50 focus:border-[#F97316]/50 transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="" className="bg-[#020617]">Select gender</option>
+                          <option value="male" className="bg-[#020617]">Male</option>
+                          <option value="female" className="bg-[#020617]">Female</option>
+                          <option value="other" className="bg-[#020617]">Other</option>
+                        </select>
+                      </div>
+
+                      {/* State */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8]">State / UT</label>
+                        <select
+                          value={manualProfile.state}
+                          onChange={(e) => setManualProfile(p => ({ ...p, state: e.target.value }))}
+                          className="w-full h-11 px-4 rounded-xl bg-[#020617] border border-white/10 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F97316]/50 focus:border-[#F97316]/50 transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="" className="bg-[#020617]">Select state</option>
+                          {INDIAN_STATES.map(s => (
+                            <option key={s} value={s} className="bg-[#020617]">{s}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Occupation */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8]">Occupation</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. farmer, student, salaried"
+                          value={manualProfile.occupation}
+                          onChange={(e) => setManualProfile(p => ({ ...p, occupation: e.target.value }))}
+                          className="w-full h-11 px-4 rounded-xl bg-[#020617] border border-white/10 text-white placeholder-[#475569] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F97316]/50 focus:border-[#F97316]/50 transition-all"
+                        />
+                      </div>
+
+                      {/* Annual Income */}
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8]">Annual Income (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="e.g. 200000"
+                          value={manualProfile.income}
+                          onChange={(e) => setManualProfile(p => ({ ...p, income: e.target.value }))}
+                          className="w-full h-11 px-4 rounded-xl bg-[#020617] border border-white/10 text-white placeholder-[#475569] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F97316]/50 focus:border-[#F97316]/50 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <Button 
+                      type="submit" 
+                      variant="accent" 
+                      className="w-full font-bold rounded-xl shadow-lg shadow-[#F97316]/20 h-12 text-base"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" /> Check My Eligibility
+                    </Button>
+                  </form>
+                )}
+
+                {/* State 3: Loading */}
+                {eligibilityLoading && (
+                  <div className="text-center py-10">
+                    <Loader2 className="h-10 w-10 text-[#F97316] animate-spin mx-auto mb-4" />
+                    <p className="text-white font-bold text-lg">Analyzing your eligibility...</p>
+                    <p className="text-[#94A3B8] text-sm mt-1">Cross-referencing your profile with scheme criteria</p>
+                  </div>
+                )}
+
+                {/* State 4: Results */}
+                {eligibilityResult && !eligibilityLoading && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row gap-8 items-start">
+                      <ScoreRing score={eligibilityResult.matchScore} />
+                      <div className="flex-1 space-y-4">
+                        {eligibilityResult.reason && (
+                          <p className="text-white font-medium text-lg italic bg-[#020617]/50 p-4 rounded-xl border border-white/5">
+                            "{eligibilityResult.reason}"
+                          </p>
+                        )}
+                        
+                        <div className="space-y-3 pt-2">
+                          <p className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Criteria Breakdown</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {eligibilityResult.breakdown?.map((dim: any, i: number) => (
+                              <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${
+                                dim.pass ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'
+                              }`}>
+                                {dim.pass 
+                                  ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                                  : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                                }
+                                <div>
+                                  <p className={`text-sm font-bold ${dim.pass ? 'text-green-50' : 'text-red-50'}`}>{dim.label}</p>
+                                  <p className={`text-xs ${dim.pass ? 'text-green-500/70' : 'text-red-400/80'}`}>{dim.detail}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Re-check button */}
+                    <div className="text-center pt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="border-white/10 text-[#94A3B8] hover:text-white hover:bg-white/5 font-bold rounded-xl"
+                        onClick={handleRecheck}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-2" /> Re-check with Different Details
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -270,3 +492,4 @@ const SchemeDetail = () => {
 };
 
 export default SchemeDetail;
+

@@ -6,16 +6,43 @@ import { useToast } from "@/hooks/use-toast";
 import VoiceInput from "@/components/VoiceInput";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, MapPin, Briefcase, IndianRupee, ExternalLink, ArrowRight, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { User, MapPin, Briefcase, IndianRupee, ExternalLink, ArrowRight, ShieldCheck, CheckCircle2, Mic, FileText, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
 
 const Eligibility = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialMode = searchParams.get('mode') === 'manual' ? 'manual' : 'voice';
+  
+  const [mode, setMode] = useState<'voice' | 'manual'>(initialMode);
+  
+  React.useEffect(() => {
+    const queryMode = searchParams.get('mode') === 'manual' ? 'manual' : 'voice';
+    setMode(queryMode);
+  }, [searchParams]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  
+  const [manualProfile, setManualProfile] = useState({
+    age: '',
+    gender: '',
+    state: '',
+    occupation: '',
+    income: ''
+  });
 
   const handleVoiceResult = async (text: string, language: string) => {
     setLoading(true);
@@ -57,6 +84,50 @@ const Eligibility = () => {
     return <CheckCircle2 className="h-5 w-5 text-slate-400" />;
   };
 
+  const handleModeSwitch = (newMode: 'voice' | 'manual') => {
+    setMode(newMode);
+    setSearchParams(newMode === 'manual' ? { mode: 'manual' } : {});
+    setResult(null);
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setResult(null);
+    try {
+      const profilePayload = {
+        age: parseInt(manualProfile.age) || undefined,
+        gender: manualProfile.gender || undefined,
+        state: manualProfile.state || undefined,
+        occupation: manualProfile.occupation || undefined,
+        income: parseInt(manualProfile.income) || undefined
+      };
+
+      const res: any = await api.post(`/ai/report`, { profile: profilePayload });
+      
+      const recs = { 
+        'Top Matches': res.report?.topMatches || [], 
+        'Other Matches': res.report?.partialMatches || [] 
+      };
+      
+      setResult({ 
+        profile: profilePayload, 
+        recommendations: recs, 
+        profileCompleteness: 100 
+      });
+      
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Check Failed",
+        description: "Could not check eligibility. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0F172A] text-white">
       <Navbar />
@@ -68,8 +139,114 @@ const Eligibility = () => {
           </h1>
         </div>
 
-        {/* Voice Input Component */}
-        <VoiceInput onResult={handleVoiceResult} />
+        {/* Mode Toggle Tabs */}
+        <div className="flex justify-center mb-10">
+          <div className="bg-[#020617] border border-white/10 p-1.5 rounded-2xl flex gap-1 shadow-2xl">
+            <button
+              onClick={() => handleModeSwitch('voice')}
+              className={`px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+                mode === 'voice' 
+                  ? 'bg-[#F97316] text-white shadow-lg shadow-[#F97316]/20' 
+                  : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Mic className="h-4 w-4" /> Voice Input
+            </button>
+            <button
+              onClick={() => handleModeSwitch('manual')}
+              className={`px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+                mode === 'manual' 
+                  ? 'bg-[#F97316] text-white shadow-lg shadow-[#F97316]/20' 
+                  : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <FileText className="h-4 w-4" /> Fill Manually
+            </button>
+          </div>
+        </div>
+
+        {/* Inputs */}
+        {mode === 'voice' ? (
+          <VoiceInput onResult={handleVoiceResult} />
+        ) : (
+          <Card className="bg-[#020617] border-white/10 max-w-3xl mx-auto shadow-2xl overflow-hidden mb-12">
+            <div className="bg-[#F97316]/10 px-6 py-4 border-b border-[#F97316]/20">
+              <h3 className="font-black text-white text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#F97316]" /> Manual Profile Entry
+              </h3>
+            </div>
+            <CardContent className="p-6 sm:p-8">
+              <form onSubmit={handleManualSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Age *</label>
+                    <Input 
+                      required type="number" min="1" max="120"
+                      value={manualProfile.age} onChange={e => setManualProfile({...manualProfile, age: e.target.value})}
+                      className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]" placeholder="e.g. 35"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Gender *</label>
+                    <Select required value={manualProfile.gender} onValueChange={v => setManualProfile({...manualProfile, gender: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select Gender" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">State/UT *</label>
+                    <Select required value={manualProfile.state} onValueChange={v => setManualProfile({...manualProfile, state: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select State" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white max-h-[300px]">
+                        {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Occupation *</label>
+                    <Select required value={manualProfile.occupation} onValueChange={v => setManualProfile({...manualProfile, occupation: v})}>
+                      <SelectTrigger className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]">
+                        <SelectValue placeholder="Select Occupation" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#0F172A] border-white/10 text-white">
+                        <SelectItem value="Farmer">Farmer</SelectItem>
+                        <SelectItem value="Student">Student</SelectItem>
+                        <SelectItem value="Entrepreneur">Entrepreneur / Business</SelectItem>
+                        <SelectItem value="Salaried">Salaried</SelectItem>
+                        <SelectItem value="Unemployed">Unemployed</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-widest">Annual Family Income (₹) *</label>
+                    <Input 
+                      required type="number" min="0" step="10000"
+                      value={manualProfile.income} onChange={e => setManualProfile({...manualProfile, income: e.target.value})}
+                      className="bg-[#0F172A] border-white/10 h-12 text-white focus:border-[#F97316]" placeholder="e.g. 250000"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  disabled={loading}
+                  className="w-full bg-[#F97316] hover:bg-[#EA580C] text-white font-black h-14 rounded-xl text-lg shadow-xl shadow-[#F97316]/20 mt-4"
+                >
+                  {loading ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Checking...</> : "Check My Eligibility"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
 
         {loading && (
           <div className="text-center py-16 bg-[#020617]/50 rounded-3xl border border-white/5 backdrop-blur-sm">
@@ -120,9 +297,11 @@ const Eligibility = () => {
               </div>
               
               {/* Optional: Translation Feedback */}
-              <div className="flex gap-4 items-center justify-center pt-4">
-                 <p className="text-xs text-[#64748B] italic">"{result.translatedText}"</p>
-              </div>
+              {result.translatedText && (
+                <div className="flex gap-4 items-center justify-center pt-4">
+                   <p className="text-xs text-[#64748B] italic">"{result.translatedText}"</p>
+                </div>
+              )}
             </div>
 
             {/* Recommendations */}

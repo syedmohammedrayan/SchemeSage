@@ -9,7 +9,11 @@ load_dotenv()
 
 # Configure Gemini AI
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "mock-gemini-key")
-client = genai.Client(api_key=GEMINI_API_KEY)
+try:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+except Exception as e:
+    print(f"Failed to initialize Gemini Client: {e}")
+    client = None
 
 # Use standard requests, but for a real production scenario, use Playwright or ScrapingBee
 def fetch_url(url: str) -> str:
@@ -34,6 +38,9 @@ def fetch_url(url: str) -> str:
         return ""
 
 def extract_schemes_with_ai(raw_text: str, source_url: str) -> list:
+    if not client or GEMINI_API_KEY == "mock-gemini-key":
+        print("Gemini client not initialized or using mock key, skipping AI extraction.")
+        return []
     if not raw_text or len(raw_text) < 100:
         return []
 

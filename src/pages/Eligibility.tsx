@@ -437,7 +437,14 @@ const Eligibility = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {Object.entries(result.recommendations || {}).flatMap(([_, schemes]: any) => schemes).sort((a:any, b:any) => b.matchScore - a.matchScore).map((match: any) => {
+                  {Array.from(
+                    new Map(
+                      Object.entries(result.recommendations || {})
+                        .flatMap(([_, schemes]: any) => schemes)
+                        .filter((match: any) => match?.scheme?.id)
+                        .map((match: any) => [match.scheme.id, match])
+                    ).values()
+                  ).sort((a: any, b: any) => b.matchScore - a.matchScore).map((match: any) => {
                     const isStrong = match.matchScore >= 75;
                     const matchColor = isStrong ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20";
 
@@ -489,13 +496,7 @@ const Eligibility = () => {
                           <Button 
                             variant="accent" 
                             className="flex-1 h-12 rounded-xl font-bold shadow-lg shadow-[#F97316]/20"
-                            onClick={() => {
-                              if (match.scheme?.applyLink) {
-                                window.open(match.scheme.applyLink, '_blank');
-                              } else {
-                                navigate(`/scheme/${match.scheme?.id}`);
-                              }
-                            }}
+                            onClick={() => navigate(`/apply/${match.scheme?.id}`)}
                           >
                             Apply Now <ArrowRight className="ml-2 h-4 w-4" />
                           </Button>

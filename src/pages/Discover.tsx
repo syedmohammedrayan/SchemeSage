@@ -243,11 +243,11 @@ const SchemeResultCard = ({ match, rank }: { match: SchemeMatch; rank: number })
                 View Details <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
             </Link>
-            <a href={match.scheme?.applyLink} target="_blank" rel="noopener noreferrer" className="flex-1">
+            <Link to={`/apply/${match.scheme?.id}`} className="flex-1">
               <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/10 font-bold rounded-xl h-10 text-sm">
-                Apply Now <ExternalLink className="h-4 w-4 ml-1" />
+                Apply Now <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
-            </a>
+            </Link>
           </div>
         </CardContent>
       </Card>

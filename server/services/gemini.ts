@@ -463,3 +463,42 @@ export async function checkEligibility(
     breakdown,
   };
 }
+
+// ─── Voice Profile Extraction ──────────────────────────────────────────────────
+export async function extractVoiceProfile(transcript: string, lang: string) {
+  const model = getModel();
+  if (!model) throw new Error("Gemini AI is not configured.");
+  
+  const prompt = `You are an AI extracting a citizen's profile from a voice transcript.
+The transcript might be in Indian languages. Translate it to English if needed.
+
+Transcript: "${transcript}"
+
+Extract the following into a JSON object:
+- age (number)
+- gender (Male/Female/Other)
+- state (string)
+- occupation (string)
+- annualIncome (number)
+- category (General/OBC/SC/ST)
+- educationLevel (string)
+- maritalStatus (string)
+
+If a field is not mentioned, do not include it.
+
+Return ONLY valid JSON like:
+{
+  "translatedText": "I am a 25 year old farmer from Assam...",
+  "profile": {
+    "age": 25,
+    "occupation": "farmer",
+    "state": "Assam"
+  }
+}`;
+
+  const result = await model.generateContent(prompt);
+  let text = result.response.text().trim();
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+  return JSON.parse(text);
+}
+

@@ -12,7 +12,7 @@ import {
   Building2, Users, FileText, Calendar, ShieldCheck, 
   ExternalLink, ChevronLeft, ArrowRight, Share2, 
   Bookmark, CheckCircle2, XCircle, AlertTriangle, Sparkles,
-  RefreshCw, Loader2, IndianRupee
+  RefreshCw, Loader2, IndianRupee, Mic, ClipboardList
 } from "lucide-react";
 
 const ScoreRing = ({ score }: { score: number }) => {
@@ -54,37 +54,11 @@ const SchemeDetail = () => {
       const res = await api.get<any>(`/schemes/${id}`);
       const schemeData = res.scheme || res; // Fallback in case backend format changes
       setScheme(schemeData);
-      // After getting scheme, check personalized eligibility
-      checkEligibility(schemeData);
+      // Do NOT auto-check eligibility — user must provide their details first
     } catch (e) {
       toast({ title: "Failed to load scheme details", variant: "destructive" });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkEligibility = async (schemeData: any) => {
-    setEligibilityLoading(true);
-    try {
-      // Mocking user profile for now if not logged in.
-      // In reality, this would pull from auth context.
-      const mockProfile = { age: 24, occupation: 'student', state: 'Telangana', gender: 'male', income: 120000 };
-      const res: any = await api.post(`/ai/report`, { profile: mockProfile });
-      
-      const allMatches = [...res.report.topMatches, ...res.report.partialMatches];
-      const matchForThisScheme = allMatches.find((m: any) => m.scheme.id === schemeData.id);
-      
-      if (matchForThisScheme) {
-        setEligibilityResult(matchForThisScheme);
-      } else {
-        // If not in report, explicitly check
-        const checkRes: any = await api.post(`/ai/check-eligibility/${schemeData.id}`, { profile: mockProfile });
-        setEligibilityResult({ ...checkRes, matchScore: checkRes.eligible ? 50 : 0 });
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setEligibilityLoading(false);
     }
   };
 
@@ -196,57 +170,36 @@ const SchemeDetail = () => {
               </Card>
             </div>
 
-            {/* AI Eligibility Panel */}
+            {/* AI Eligibility Panel — only shows prompt until user provides details */}
             <Card className="bg-gradient-to-br from-[#F97316]/10 to-[#0F172A] border-[#F97316]/20 overflow-hidden shadow-2xl">
               <div className="bg-[#F97316]/10 px-6 py-4 border-b border-[#F97316]/20 flex items-center justify-between">
                 <h3 className="font-black flex items-center gap-2 text-white text-lg">
                   <Sparkles className="h-5 w-5 text-[#F97316]" /> Your Eligibility Analysis
                 </h3>
-                {eligibilityLoading && <Loader2 className="h-4 w-4 text-[#F97316] animate-spin" />}
               </div>
               
               <CardContent className="p-6">
-                {!eligibilityResult && !eligibilityLoading ? (
-                  <div className="text-center py-6">
-                    <p className="text-[#94A3B8] mb-4">Complete your profile to see your precise eligibility match.</p>
-                    <Link to="/discover">
-                      <Button variant="accent" className="font-bold rounded-xl shadow-lg shadow-[#F97316]/20">
-                        Check My Eligibility
+                <div className="text-center py-8">
+                  <div className="mx-auto mb-6 h-16 w-16 rounded-full bg-[#F97316]/10 flex items-center justify-center">
+                    <ClipboardList className="h-8 w-8 text-[#F97316]" />
+                  </div>
+                  <h4 className="text-xl font-bold text-white mb-2">Enter Your Details First</h4>
+                  <p className="text-[#94A3B8] mb-6 max-w-md mx-auto">
+                    Tell us about yourself — your age, state, income, occupation — to get a personalized eligibility match for this scheme.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Link to="/eligibility">
+                      <Button variant="accent" className="font-bold rounded-xl shadow-lg shadow-[#F97316]/20 h-12 px-6">
+                        <Mic className="h-4 w-4 mr-2" /> Use Voice Input
+                      </Button>
+                    </Link>
+                    <Link to="/eligibility">
+                      <Button variant="outline" className="font-bold rounded-xl border-white/10 hover:bg-white/5 text-white h-12 px-6">
+                        <ClipboardList className="h-4 w-4 mr-2" /> Fill Manually
                       </Button>
                     </Link>
                   </div>
-                ) : eligibilityResult ? (
-                  <div className="flex flex-col md:flex-row gap-8 items-start">
-                    <ScoreRing score={eligibilityResult.matchScore} />
-                    <div className="flex-1 space-y-4">
-                      {eligibilityResult.reason && (
-                        <p className="text-white font-medium text-lg italic bg-[#020617]/50 p-4 rounded-xl border border-white/5">
-                          "{eligibilityResult.reason}"
-                        </p>
-                      )}
-                      
-                      <div className="space-y-3 pt-2">
-                        <p className="text-xs font-black text-[#94A3B8] uppercase tracking-widest">Criteria Breakdown</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {eligibilityResult.breakdown?.map((dim: any, i: number) => (
-                            <div key={i} className={`flex items-start gap-2.5 p-2.5 rounded-xl border ${
-                              dim.pass ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'
-                            }`}>
-                              {dim.pass 
-                                ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                                : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                              }
-                              <div>
-                                <p className={`text-sm font-bold ${dim.pass ? 'text-green-50' : 'text-red-50'}`}>{dim.label}</p>
-                                <p className={`text-xs ${dim.pass ? 'text-green-500/70' : 'text-red-400/80'}`}>{dim.detail}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                </div>
               </CardContent>
             </Card>
 

@@ -192,6 +192,14 @@ class SchemeRecommender:
     def predict(self, profile: Dict[str, Any], schemes: List[Dict[str, Any]]) -> Dict[str, Any]:
         completeness, missing = self._calculate_completeness(profile)
         
+        # Do not suggest any schemes if the user provided zero details
+        if completeness == 0:
+            return {
+                "profileCompleteness": 0,
+                "missingFields": missing,
+                "recommendations": {}
+            }
+            
         scored_schemes = []
         for scheme in schemes:
             score, reasons = self._calculate_score(profile, scheme)

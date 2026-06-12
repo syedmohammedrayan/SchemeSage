@@ -96,6 +96,10 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/withdrawal', withdrawalRoutes);
 
+// ─── Uptime Robot Endpoints ─────────────────────────────────────────────────────
+app.get('/', (_req, res) => res.status(200).send('Technove Backend is running'));
+app.get('/ping', (_req, res) => res.status(200).send('pong'));
+
 // Health check — exposes DB status without sensitive info
 app.get('/api/health', (_req, res) => {
   const dbStatus = getDbStatus();

@@ -10,6 +10,11 @@ import uvicorn
 app = FastAPI(title="Technove AI & ML Service")
 recommender = SchemeRecommender()
 
+@app.get("/")
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "service": "technove-ml-service"}
+
 class ProfileInput(BaseModel):
     age: Optional[int] = None
     gender: Optional[str] = None

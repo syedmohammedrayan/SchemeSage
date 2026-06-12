@@ -8,9 +8,9 @@ export const connectDB = async () => {
   try {
     console.log("[🚀 Firebase] Initializing Admin SDK...");
     
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY;
+    const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+    const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY?.trim();
 
     if (!projectId || !clientEmail || !privateKeyRaw) {
       console.warn("⚠️ Firebase configuration missing from environment variables.");

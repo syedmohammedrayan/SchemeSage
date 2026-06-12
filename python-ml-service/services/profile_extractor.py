@@ -78,9 +78,102 @@ def extract_profile(text: str) -> Dict[str, Any]:
             return final_profile
         except Exception as e:
             print(f"Gemini Extraction failed: {e}")
-            # Fall through to return default_profile if AI fails
             pass
-            
+    # Comprehensive Keyword Fallback (when Gemini fails or API key missing)
+    import re
+    text_lower = text.lower()
+    
+    # --- Age ---
+    age_match = re.search(r'(\d{1,2})\s*(?:year|yr|sal|saal)', text_lower)
+    if not age_match:
+        age_match = re.search(r'(?:age|aged|i am|i\'m|main)\s*(\d{1,2})', text_lower)
+    if age_match:
+        age_val = int(age_match.group(1))
+        if 1 <= age_val <= 120:
+            default_profile["age"] = age_val
+    
+    # --- Indian States ---
+    indian_states = {
+        "andhra pradesh": "Andhra Pradesh", "arunachal pradesh": "Arunachal Pradesh",
+        "assam": "Assam", "bihar": "Bihar", "chhattisgarh": "Chhattisgarh",
+        "goa": "Goa", "gujarat": "Gujarat", "haryana": "Haryana",
+        "himachal pradesh": "Himachal Pradesh", "jharkhand": "Jharkhand",
+        "karnataka": "Karnataka", "kerala": "Kerala", "madhya pradesh": "Madhya Pradesh",
+        "maharashtra": "Maharashtra", "manipur": "Manipur", "meghalaya": "Meghalaya",
+        "mizoram": "Mizoram", "nagaland": "Nagaland", "odisha": "Odisha",
+        "punjab": "Punjab", "rajasthan": "Rajasthan", "sikkim": "Sikkim",
+        "tamil nadu": "Tamil Nadu", "telangana": "Telangana", "tripura": "Tripura",
+        "uttar pradesh": "Uttar Pradesh", "uttarakhand": "Uttarakhand",
+        "west bengal": "West Bengal", "delhi": "Delhi", "jammu and kashmir": "Jammu and Kashmir",
+    }
+    for key, val in indian_states.items():
+        if key in text_lower:
+            default_profile["state"] = val
+            break
+    
+    # --- Income ---
+    income_match = re.search(r'(?:₹|rs\.?|rupees?|income|earn|salary|kamata|kamaata)\s*(\d[\d,]*)\s*(lakh|lac|lakhs?)?', text_lower)
+    if not income_match:
+        income_match = re.search(r'(\d[\d,]*)\s*(lakh|lac|lakhs?)', text_lower)
+    if income_match:
+        raw_amount = int(income_match.group(1).replace(',', ''))
+        multiplier = income_match.group(2)
+        if multiplier and multiplier.startswith('la'):
+            raw_amount *= 100000
+        elif raw_amount < 1000:
+            # Likely in lakhs (e.g. "3 lakh" without the word)
+            pass
+        default_profile["income"] = raw_amount
+    
+    # --- Occupation ---
+    occupation_map = {
+        "farmer": ["farmer", "kisan", "krishi", "agriculture", "farming", "kisaan"],
+        "student": ["student", "studying", "vidyarthi", "padhai"],
+        "laborer": ["laborer", "labourer", "mazdoor", "worker", "shramik", "daily wage"],
+        "self-employed": ["self-employed", "self employed", "freelance", "khud ka kaam"],
+        "business": ["business", "businessman", "merchant", "vyapari", "dukandaar", "shopkeeper"],
+        "unemployed": ["unemployed", "jobless", "berozgar", "no job"],
+        "teacher": ["teacher", "shikshak", "professor"],
+        "artisan": ["artisan", "craftsman", "weaver", "carpenter", "blacksmith", "potter"],
+        "entrepreneur": ["entrepreneur", "startup"],
+    }
+    for occ, keywords in occupation_map.items():
+        if any(kw in text_lower for kw in keywords):
+            default_profile["occupation"] = occ.capitalize() if occ != "self-employed" else "Self-Employed"
+            break
+    
+    # --- Gender ---
+    if any(w in text_lower for w in ["female", "woman", "girl", "mahila", "ladki", "stri", "aurat"]):
+        default_profile["gender"] = "female"
+    elif any(w in text_lower for w in ["male", "boy", "man", "ladka", "purush"]):
+        default_profile["gender"] = "male"
+    
+    # --- Caste / Category ---
+    if any(w in text_lower for w in ["scheduled caste", " sc ", "sc category", "dalit"]):
+        default_profile["category"] = "SC"
+    elif any(w in text_lower for w in ["scheduled tribe", " st ", "st category", "adivasi", "tribal"]):
+        default_profile["category"] = "ST"
+    elif any(w in text_lower for w in [" obc ", "other backward", "obc category"]):
+        default_profile["category"] = "OBC"
+    elif any(w in text_lower for w in [" ews ", "economically weaker"]):
+        default_profile["category"] = "EWS"
+    elif any(w in text_lower for w in ["general category", "general caste"]):
+        default_profile["category"] = "General"
+    
+    # --- Education ---
+    if any(w in text_lower for w in ["phd", "doctorate", "ph.d"]):
+        default_profile["education"] = "PhD"
+    elif any(w in text_lower for w in ["postgraduate", "post graduate", "master", "mba", "mtech", "m.tech"]):
+        default_profile["education"] = "Postgraduate"
+    elif any(w in text_lower for w in ["graduate", "bachelor", "b.tech", "btech", "degree"]):
+        default_profile["education"] = "Graduate"
+    elif any(w in text_lower for w in ["12th", "12 pass", "hsc", "intermediate", "inter"]):
+        default_profile["education"] = "12th Pass"
+    elif any(w in text_lower for w in ["10th", "10 pass", "ssc", "matric", "matriculation"]):
+        default_profile["education"] = "10th Pass"
+    elif any(w in text_lower for w in ["8th", "8 pass"]):
+        default_profile["education"] = "8th Pass"
+        
     return default_profile
 
 def calculate_completeness(profile: Dict[str, Any]) -> int:

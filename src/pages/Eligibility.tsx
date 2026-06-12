@@ -134,7 +134,7 @@ const Eligibility = () => {
               
               {Object.keys(result.recommendations || {}).length === 0 ? (
                 <div className="text-center p-12 bg-[#020617] rounded-3xl border border-white/5">
-                  <p className="text-[#94A3B8] text-lg">No direct matches found. Try providing more details like income or caste!</p>
+                  <p className="text-[#94A3B8] text-lg">We couldn't find matching schemes right now. Try speaking more details like your age, state, occupation, or income for better results!</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

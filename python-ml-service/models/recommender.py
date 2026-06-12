@@ -65,8 +65,11 @@ class SchemeRecommender:
             else:
                 return 0.0, []  # Strict disqualification if explicitly wrong state
         elif is_national:
-            score += WEIGHTS['state'] * 0.5 # Partial base score for national
+            score += WEIGHTS['state'] * 0.7
             reasons.append("✓ National Scheme")
+        elif not p_state and s_states and not is_national:
+            # User didn't provide state — give partial credit, don't disqualify
+            score += WEIGHTS['state'] * 0.3
 
         # 2. Category Match
         p_cat = profile.get('category')
@@ -79,6 +82,9 @@ class SchemeRecommender:
                 return 0.0, []
         elif not s_cats or "All" in s_cats:
             score += WEIGHTS['category'] * 0.5
+        elif not p_cat and s_cats:
+            # User didn't provide category — give partial credit
+            score += WEIGHTS['category'] * 0.3
 
         # 3. Income Match
         p_inc = profile.get('income')
@@ -91,26 +97,40 @@ class SchemeRecommender:
                 return 0.0, []
         elif max_inc is None:
             score += WEIGHTS['income'] * 0.5
+        elif p_inc is None and max_inc is not None:
+            # User didn't provide income — give partial credit
+            score += WEIGHTS['income'] * 0.3
 
-        # 4. Occupation Match
+        # 4. Occupation Match — KEY for voice inputs like "I am a farmer"
         p_occ = profile.get('occupation')
         s_occs = eligibility.get('occupations', [])
         if p_occ and s_occs and "All" not in s_occs:
             if p_occ.lower() in [o.lower() for o in s_occs]:
                 score += WEIGHTS['occupation']
                 reasons.append(f"✓ {p_occ}")
-        elif not s_occs or "All" in s_occs:
+            else:
+                # User has an occupation but it doesn't match — small penalty but no disqualification
+                score += WEIGHTS['occupation'] * 0.1
+        elif p_occ and (not s_occs or "All" in s_occs):
+            # Scheme is open to all occupations, user has one
+            score += WEIGHTS['occupation'] * 0.5
+            reasons.append("✓ Open to All Occupations")
+        elif not p_occ:
             score += WEIGHTS['occupation'] * 0.3
 
         # 5. Education Match
         p_edu = profile.get('education')
         s_edus = eligibility.get('educationLevels', [])
-        if p_edu and s_edus and "All" not in s_edus:
+        if p_edu and s_edus and "All" not in s_edus and "any" not in s_edus:
             if p_edu.lower() in [e.lower() for e in s_edus]:
                 score += WEIGHTS['education']
                 reasons.append(f"✓ {p_edu} Education")
-        elif not s_edus or "All" in s_edus:
+            else:
+                score += WEIGHTS['education'] * 0.1
+        elif not s_edus or "All" in s_edus or "any" in s_edus:
             score += WEIGHTS['education'] * 0.5
+        elif not p_edu:
+            score += WEIGHTS['education'] * 0.3
 
         # 6. Age Match
         p_age = profile.get('age')
@@ -125,6 +145,9 @@ class SchemeRecommender:
             reasons.append("✓ Working Age" if 18 <= p_age <= 60 else "✓ Age Eligible")
         elif min_age is None and max_age is None:
             score += WEIGHTS['age'] * 0.5
+        else:
+            # User didn't provide age — give partial credit
+            score += WEIGHTS['age'] * 0.3
 
         # 7. Gender Match
         p_gender = profile.get('gender')
@@ -135,12 +158,27 @@ class SchemeRecommender:
                 reasons.append(f"✓ {p_gender.capitalize()} Applicable")
             else:
                 return 0.0, []
-        elif s_gender.lower() == 'all':
+        elif not s_gender or s_gender.lower() == 'all':
             score += WEIGHTS['gender'] * 0.5
+        elif not p_gender:
+            score += WEIGHTS['gender'] * 0.3
 
-        # Base minimum score if any strict criteria matched
-        if len([r for r in reasons if "National" not in r]) > 0:
-            score += 20  # Boost for matching at least one personal trait
+        # 8. Keyword/Tag bonus — match user's occupation or details against scheme name, description, tags
+        p_occ_lower = (p_occ or '').lower()
+        scheme_name_lower = scheme.get('name', '').lower()
+        scheme_desc_lower = scheme.get('description', '').lower()
+        scheme_tags = [t.lower() for t in scheme.get('tags', [])]
+        
+        if p_occ_lower:
+            if p_occ_lower in scheme_name_lower or p_occ_lower in scheme_desc_lower or p_occ_lower in scheme_tags:
+                score += 15  # Strong keyword bonus
+                if f"✓ Relevant to {p_occ.capitalize()}" not in reasons:
+                    reasons.append(f"✓ Relevant to {p_occ.capitalize()}")
+
+        # Base boost if at least one personal trait matched
+        personal_reasons = [r for r in reasons if "National" not in r and "Open to All" not in r]
+        if len(personal_reasons) > 0:
+            score += 15
             
         return score, reasons
 
@@ -191,19 +229,11 @@ class SchemeRecommender:
 
     def predict(self, profile: Dict[str, Any], schemes: List[Dict[str, Any]]) -> Dict[str, Any]:
         completeness, missing = self._calculate_completeness(profile)
-        
-        # Do not suggest any schemes if the user provided zero details
-        if completeness == 0:
-            return {
-                "profileCompleteness": 0,
-                "missingFields": missing,
-                "recommendations": {}
-            }
             
         scored_schemes = []
         for scheme in schemes:
             score, reasons = self._calculate_score(profile, scheme)
-            if score >= 25.0:  # Relaxed threshold to show Potential Matches
+            if score >= 20.0:  # Relaxed threshold to show matches even with partial profiles
                 scored_schemes.append({
                     "schemeId": scheme['id'],
                     "schemeName": scheme.get('name', 'Unknown Scheme'),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -183,11 +183,11 @@ const SchemeCard = ({ scheme }: { scheme: typeof featuredSchemes[0] }) => {
             View Details
           </Button>
         </Link>
-        <Link to="/eligibility" className="flex-1">
-          <Button className="w-full bg-white text-black hover:bg-slate-200 hover:text-black font-bold rounded-xl h-11 text-sm border-0 shadow-none">
+        <button className="flex-1" onClick={() => window.dispatchEvent(new CustomEvent('open-eligibility-modal'))}>
+          <Button className="w-full bg-white text-black hover:bg-slate-200 hover:text-black font-bold rounded-xl h-11 text-sm border-0 shadow-none pointer-events-none">
             Check Eligibility
           </Button>
-        </Link>
+        </button>
       </div>
     </div>
   );
@@ -205,6 +205,7 @@ const SectionHeading = ({ title, subtitle }: { title: string; subtitle?: string 
 const Landing = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [isEligibilityModalOpen, setIsEligibilityModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agentForm, setAgentForm] = useState({ fullName: "", phone: "", email: "" });
 
@@ -238,6 +239,13 @@ const Landing = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Listen for the custom event from the SchemeCard
+  useEffect(() => {
+    const handleOpenModal = () => setIsEligibilityModalOpen(true);
+    window.addEventListener('open-eligibility-modal', handleOpenModal);
+    return () => window.removeEventListener('open-eligibility-modal', handleOpenModal);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#020617] text-[#CBD5E1] font-sans">
@@ -298,15 +306,14 @@ const Landing = () => {
               >
                 Explore Schemes <ArrowDown className="h-5 w-5" />
               </Button>
-              <Link to="/eligibility">
-                <Button
-                  id="hero-check-eligibility-btn"
-                  variant="outline"
-                  className="w-full sm:w-auto h-14 px-8 text-base font-bold text-white border-white/25 hover:bg-white/10 bg-transparent rounded-xl"
-                >
-                  Check Eligibility
-                </Button>
-              </Link>
+              <Button
+                id="hero-check-eligibility-btn"
+                variant="outline"
+                onClick={() => setIsEligibilityModalOpen(true)}
+                className="w-full sm:w-auto h-14 px-8 text-base font-bold text-white border-white/25 hover:bg-white/10 bg-transparent rounded-xl"
+              >
+                Check Eligibility
+              </Button>
             </div>
 
             {/* Trust Badges */}
@@ -418,12 +425,12 @@ const Landing = () => {
                 <p className="font-bold text-white text-sm">Want to know which schemes you qualify for?</p>
                 <p className="text-[#64748B] text-xs mt-0.5">Visit the eligibility checker to get a personalised list of schemes matched to your profile.</p>
               </div>
-              <Link
-                to="/eligibility"
+              <button
+                onClick={() => setIsEligibilityModalOpen(true)}
                 className="shrink-0 text-xs font-bold text-[#F97316] border border-[#F97316]/30 hover:bg-[#F97316]/10 rounded-xl px-4 py-2 transition-colors whitespace-nowrap"
               >
                 Check My Eligibility →
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -705,6 +712,69 @@ const Landing = () => {
                     </p>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isEligibilityModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-[#020617]/80 backdrop-blur-sm"
+              onClick={() => setIsEligibilityModalOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-[#0F172A] rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white/10 z-10"
+            >
+              <div className="bg-[#f97316] pt-8 pb-8 px-8 flex flex-col items-center text-center relative">
+                <button
+                  onClick={() => setIsEligibilityModalOpen(false)}
+                  className="absolute top-4 right-4 text-white/80 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <div className="h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center mb-4 border border-white/20">
+                  <ShieldCheck className="h-7 w-7 text-white" />
+                </div>
+                <h3 className="text-2xl font-black text-white mb-2">Check Your Eligibility</h3>
+                <p className="text-white/90 text-sm px-4">
+                  How would you like to provide your details to find matching schemes?
+                </p>
+              </div>
+              <div className="p-8 space-y-4">
+                <Link to="/eligibility" className="block" onClick={() => setIsEligibilityModalOpen(false)}>
+                  <div className="bg-[#020617] hover:bg-white/5 border border-white/10 hover:border-[#f97316]/50 rounded-2xl p-5 transition-all flex items-start gap-4 group cursor-pointer">
+                    <div className="h-12 w-12 rounded-full bg-[#f97316]/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                      <svg className="h-5 w-5 text-[#f97316]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-lg mb-1 group-hover:text-[#f97316] transition-colors">Use Voice Input</h4>
+                      <p className="text-[#94A3B8] text-sm">Speak naturally in your preferred language and let AI extract your profile.</p>
+                    </div>
+                  </div>
+                </Link>
+                
+                <Link to="/eligibility?mode=manual" className="block" onClick={() => setIsEligibilityModalOpen(false)}>
+                  <div className="bg-[#020617] hover:bg-white/5 border border-white/10 hover:border-[#f97316]/50 rounded-2xl p-5 transition-all flex items-start gap-4 group cursor-pointer">
+                    <div className="h-12 w-12 rounded-full bg-[#f97316]/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                      <FileText className="h-5 w-5 text-[#f97316]" />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-lg mb-1 group-hover:text-[#f97316] transition-colors">Fill Manually</h4>
+                      <p className="text-[#94A3B8] text-sm">Enter your age, location, and other details using a standard form.</p>
+                    </div>
+                  </div>
+                </Link>
               </div>
             </motion.div>
           </div>

@@ -47,8 +47,9 @@ const Eligibility = () => {
   const handleNlpExtract = async () => {
     if (!nlpText.trim()) return;
     setIsExtracting(true);
+    setResult(null);
     try {
-      const result = await api.post<any>('/voice/transcribe', { text: nlpText, language: 'en-IN' });
+      const result = await api.post<any>('/voice/voice-profile', { text: nlpText, language: 'en-IN' });
       const extracted = result?.profile || {};
       setManualProfile(prev => ({
         ...prev,
@@ -57,13 +58,14 @@ const Eligibility = () => {
         occupation: extracted.occupation || prev.occupation,
         income: extracted.income || extracted.annualIncome ? String(extracted.income || extracted.annualIncome) : prev.income,
         category: extracted.category || prev.category,
-        gender: extracted.gender || prev.gender,
+        gender: extracted.gender ? extracted.gender.charAt(0).toUpperCase() + extracted.gender.slice(1).toLowerCase() : prev.gender,
         maritalStatus: extracted.maritalStatus || prev.maritalStatus,
         ruralUrban: extracted.ruralUrban || prev.ruralUrban,
         disability: extracted.disability !== undefined ? extracted.disability : prev.disability,
         minority: extracted.minority !== undefined ? extracted.minority : prev.minority,
       }));
-      toast({ title: "Profile Extracted ✓", description: "Details filled in. Review and check eligibility." });
+      setResult(result);
+      toast({ title: "Profile Extracted ✓", description: "Details filled in and schemes found instantly!" });
     } catch (e) {
       toast({ title: "Extraction Failed", description: "Could not extract profile. Please fill manually.", variant: "destructive" });
     } finally {

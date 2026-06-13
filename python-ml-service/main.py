@@ -11,6 +11,7 @@ app = FastAPI(title="Technove AI & ML Service")
 recommender = SchemeRecommender()
 
 @app.get("/ping")
+@app.head("/ping")
 def ping():
     return {"status": "ok", "service": "technove-ml-service"}
 

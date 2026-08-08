@@ -431,7 +431,12 @@ const Eligibility = () => {
                 Recommended Schemes
               </h2>
               
-              {Object.keys(result.recommendations || {}).length === 0 ? (
+              {result.profileCompleteness === 0 ? (
+                <div className="text-center p-12 bg-red-500/10 rounded-3xl border border-red-500/20">
+                  <p className="text-red-400 text-lg font-bold">Invalid or irrelevant input provided.</p>
+                  <p className="text-[#94A3B8] text-md mt-2">We could not extract any realistic details like age, state, occupation, or income from your input. Please speak clearly about your eligibility details.</p>
+                </div>
+              ) : Object.keys(result.recommendations || {}).length === 0 ? (
                 <div className="text-center p-12 bg-[#020617] rounded-3xl border border-white/5">
                   <p className="text-[#94A3B8] text-lg">We couldn't find matching schemes right now. Try speaking more details like your age, state, occupation, or income for better results!</p>
                 </div>

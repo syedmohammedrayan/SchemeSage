@@ -36,6 +36,7 @@ const GovernmentDashboard = () => {
     name: '', ministry: '', description: '', benefits: '',
     eligibility: '', documents: '', applyLink: '', tags: '', deadline: ''
   });
+  const [publishingScrapedId, setPublishingScrapedId] = useState<string | null>(null);
   const [editSchemeDialog, setEditSchemeDialog] = useState(false);
   const [editSchemeForm, setEditSchemeForm] = useState({
     id: '', name: '', ministry: '', description: '', benefits: '',
@@ -98,9 +99,17 @@ const GovernmentDashboard = () => {
     try {
       await api.post('/government/publish-scheme', publishForm);
       toast({ title: '✅ Scheme Published!', description: `"${publishForm.name}" is now live for all users and agents.` });
+      
+      if (publishingScrapedId) {
+        await api.delete(`/government/schemes/${publishingScrapedId}`).catch(() => {});
+        fetchScrapedSchemes();
+      }
+      
       setPublishForm({ name: '', ministry: '', description: '', benefits: '', eligibility: '', documents: '', applyLink: '', tags: '', deadline: '' });
+      setPublishingScrapedId(null);
       fetchPublishedSchemes();
       queryClient.invalidateQueries({ queryKey: ['schemes'] });
+      setActiveTab("schemes");
     } catch (err: any) {
       toast({ title: 'Publish Failed', description: err.message || 'Could not publish scheme.', variant: 'destructive' });
     } finally {
@@ -108,9 +117,7 @@ const GovernmentDashboard = () => {
     }
   };
 
-  const handlePublishFromScrape = async (s: any) => {
-    if (!confirm(`Automatically publish "${s.name}" to the public platform?`)) return;
-    
+  const handlePublishFromScrape = (s: any) => {
     const formObj = {
       name: s.name || '',
       ministry: s.ministry || 'Government of India',
@@ -123,24 +130,10 @@ const GovernmentDashboard = () => {
       deadline: '',
     };
 
-    try {
-      setPublishing(true);
-      await api.post('/government/publish-scheme', formObj);
-      toast({ title: '✅ Scheme Published!', description: `"${formObj.name}" is now live for all users.` });
-      
-      // Remove from discovery feed since it's published
-      await api.delete(`/government/schemes/${s.id}`);
-      
-      fetchPublishedSchemes();
-      fetchScrapedSchemes();
-      queryClient.invalidateQueries({ queryKey: ['schemes'] });
-      
-      setActiveTab("schemes");
-    } catch (err: any) {
-      toast({ title: 'Publish Failed', description: err.message || 'Could not auto-publish scheme.', variant: 'destructive' });
-    } finally {
-      setPublishing(false);
-    }
+    setPublishForm(formObj);
+    setPublishingScrapedId(s.id);
+    setActiveTab("publish");
+    toast({ title: 'Scheme loaded for review', description: 'Please review and modify details before publishing.' });
   };
 
   const handleDeletePublishedScheme = async (id: string) => {
@@ -852,7 +845,7 @@ const GovernmentDashboard = () => {
                   <div className="h-1.5 bg-gradient-to-r from-accent to-blue-500" />
                   <CardHeader>
                     <CardTitle className="font-heading text-lg flex items-center gap-2">
-                      <Plus className="h-5 w-5 text-accent" /> Publish New Scheme
+                      <Plus className="h-5 w-5 text-accent" /> {publishingScrapedId ? 'Review & Publish Discovered Scheme' : 'Publish New Scheme'}
                     </CardTitle>
                     <CardDescription>
                       Add a scheme to the platform. Citizens and agents will see it immediately. You can also click <strong>Publish</strong> on any discovery feed item to pre-fill this form.
@@ -909,13 +902,28 @@ const GovernmentDashboard = () => {
                         <Input type="date" value={publishForm.deadline} onChange={e => setPublishForm(p => ({...p, deadline: e.target.value}))} />
                       </div>
                     </div>
-                    <Button
-                      className="w-full h-11 bg-accent hover:bg-accent/90 text-white font-bold mt-2"
-                      onClick={handlePublishScheme}
-                      disabled={publishing}
-                    >
-                      {publishing ? 'Publishing...' : '🚀 Publish to Platform'}
-                    </Button>
+                    <div className="flex gap-3 mt-2">
+                      {publishingScrapedId && (
+                        <Button
+                          variant="outline"
+                          className="w-1/3 h-11"
+                          onClick={() => {
+                            setPublishForm({ name: '', ministry: '', description: '', benefits: '', eligibility: '', documents: '', applyLink: '', tags: '', deadline: '' });
+                            setPublishingScrapedId(null);
+                            setActiveTab("scraper");
+                          }}
+                        >
+                          Cancel Review
+                        </Button>
+                      )}
+                      <Button
+                        className={`${publishingScrapedId ? 'w-2/3' : 'w-full'} h-11 bg-accent hover:bg-accent/90 text-white font-bold`}
+                        onClick={handlePublishScheme}
+                        disabled={publishing}
+                      >
+                        {publishing ? 'Publishing...' : '🚀 Publish to Platform'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -1117,7 +1125,7 @@ const GovernmentDashboard = () => {
                                       className="text-accent border-accent/30 hover:bg-accent hover:text-white text-xs h-8"
                                       onClick={() => handlePublishFromScrape(s)}
                                     >
-                                      <Plus className="h-3 w-3 mr-1" /> Publish
+                                      <Plus className="h-3 w-3 mr-1" /> Review & Publish
                                     </Button>
                                     <Button
                                       size="sm"

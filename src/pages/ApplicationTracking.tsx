@@ -23,46 +23,42 @@ export default function ApplicationTracking() {
 
   if (isLoading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center bg-muted/30">
+      <div className="min-h-screen flex items-center justify-center bg-[#030712]">
         <div className="flex flex-col items-center gap-4">
-          <Activity className="h-10 w-10 text-accent animate-pulse" />
-          <p className="text-muted-foreground font-medium animate-pulse">Loading tracking data...</p>
+          <Activity className="h-5 w-5 text-slate-500 animate-pulse" />
+          <p className="text-slate-500 text-sm font-medium animate-pulse tracking-widest uppercase">Loading</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[80vh] bg-muted/30 pb-20">
-      <header className="bg-[#020617] text-white pt-16 pb-12 px-4 shadow-xl border-b border-white/10 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-accent/20 to-transparent pointer-events-none" />
+    <div className="min-h-screen bg-[#030712] text-slate-200 font-sans selection:bg-[#F97316]/20 pb-32">
+      <header className="pt-24 pb-16 px-6 border-b border-slate-800/60 relative">
         <div className="container mx-auto max-w-4xl relative z-10">
-          <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20 px-3 py-1 uppercase tracking-[0.2em] text-[10px] font-black mb-4 backdrop-blur-sm">
-            Live Tracking
-          </Badge>
-          <h1 className="font-heading font-black text-3xl md:text-5xl tracking-tight mb-3">
-            Application <span className="text-accent">Tracking</span>
+          <h1 className="text-3xl font-semibold text-slate-100 tracking-tight mb-4">
+            Application Tracking
           </h1>
-          <p className="text-slate-400 max-w-xl leading-relaxed">
+          <p className="text-slate-400 max-w-xl text-sm leading-relaxed">
             Monitor the progress of your government scheme applications in real-time. Whether self-applied or agent-assisted, stay updated at every step.
           </p>
         </div>
       </header>
 
-      <main className="container mx-auto max-w-4xl px-4 -mt-6">
+      <main className="container mx-auto max-w-4xl px-6 pt-12">
         {activeApps.length === 0 ? (
-          <Card className="shadow-2xl border-white/10 bg-card p-12 text-center flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="h-24 w-24 bg-muted rounded-full flex items-center justify-center mb-6">
-              <BookOpen className="h-10 w-10 text-muted-foreground" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">No Active Applications</h2>
-            <p className="text-muted-foreground max-w-sm mb-8">
-              You haven't submitted any scheme applications yet. Discover schemes you're eligible for and apply today!
+          <div className="border border-slate-800/60 rounded-xl p-12 text-center flex flex-col items-center justify-center">
+            <h2 className="text-lg font-semibold text-slate-300 mb-2">No Active Applications</h2>
+            <p className="text-slate-500 text-sm max-w-sm mb-8">
+              You haven't submitted any scheme applications yet. Discover schemes you're eligible for and apply today.
             </p>
-            <Button size="lg" onClick={() => navigate('/dashboard')} className="gap-2">
+            <button 
+              onClick={() => navigate('/dashboard')} 
+              className="bg-white text-black px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors flex items-center gap-2"
+            >
               <Search className="h-4 w-4" /> Browse Schemes
-            </Button>
-          </Card>
+            </button>
+          </div>
         ) : (
           <div className="space-y-6">
             {activeApps.map((app: any, idx: number) => {
@@ -86,101 +82,95 @@ export default function ApplicationTracking() {
                   transition={{ delay: idx * 0.1 }}
                   key={app.id}
                 >
-                  <Card className="overflow-hidden shadow-card border-t-4 border-t-accent hover:shadow-xl transition-shadow">
-                    <CardHeader className="bg-muted/30 pb-4 border-b">
-                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                  <div className="border border-slate-800/60 rounded-xl bg-[#0F172A]/30 overflow-hidden group hover:border-slate-700 transition-colors">
+                    <div className="p-6 md:p-8">
+                      {/* Header */}
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-slate-800/60 pb-8">
                         <div>
-                          <CardTitle className="text-2xl font-bold text-slate-900 mb-1">
-                            {app.schemeName}
-                          </CardTitle>
-                          <p className="font-mono text-sm text-slate-500 font-semibold">
-                            Application ID: {app.trackingId || app.id.slice(0, 8).toUpperCase()}
-                          </p>
-                        </div>
-                        <Button asChild className="shrink-0">
-                          <Link to={`/tracking/${app.id}`}>View Details <ArrowRight className="h-4 w-4 ml-2" /></Link>
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    
-                    <CardContent className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 mb-8 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Submitted</p>
-                          <p className="text-sm font-medium text-slate-900">
-                            {new Date(app.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Method</p>
-                          <div className="flex items-center gap-2">
-                            {isAssisted ? <User className="h-4 w-4 text-purple-500" /> : <FileText className="h-4 w-4 text-blue-500" />}
-                            <p className={`text-sm font-bold ${isAssisted ? 'text-purple-600' : 'text-blue-600'}`}>
-                              {isAssisted ? 'Agent Assisted' : 'Manual Application'}
-                            </p>
+                          <div className="flex items-center gap-3 mb-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-widest uppercase bg-slate-800 text-slate-400">
+                              ID: {app.trackingId || app.id.slice(0, 8).toUpperCase()}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-widest uppercase ${
+                              isAssisted ? 'bg-purple-900/30 text-purple-400 border border-purple-800/50' : 'bg-blue-900/30 text-blue-400 border border-blue-800/50'
+                            }`}>
+                              {isAssisted ? 'Assisted' : 'Manual'}
+                            </span>
                           </div>
+                          <h3 className="text-xl font-semibold text-slate-100 group-hover:text-[#F97316] transition-colors">
+                            {app.schemeName}
+                          </h3>
                         </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Current Status</p>
-                          <Badge variant="outline" className={`capitalize font-bold border-0 px-0 ${
-                            isError ? 'text-red-600' : currentStep === 3 ? 'text-green-600' : 'text-accent'
-                          }`}>
-                            <Activity className="h-3 w-3 mr-1.5 inline" />
-                            {app.status.replace('_', ' ')}
-                          </Badge>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Last Updated</p>
-                          <p className="text-sm font-medium text-slate-900 flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 text-slate-400" />
-                            {new Date(app.updatedAt || app.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        <Link 
+                          to={`/tracking/${app.id}`}
+                          className="shrink-0 text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-colors border border-slate-800/60 rounded-lg px-4 py-2 hover:bg-slate-800/50"
+                        >
+                          View Details <ArrowRight className="h-4 w-4" />
+                        </Link>
+                      </div>
+
+                      {/* Metadata Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-6">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Submitted</p>
+                          <p className="text-sm font-medium text-slate-300">
+                            {new Date(app.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </p>
                         </div>
                         
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Status</p>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-medium capitalize ${
+                              isError ? 'text-red-400' : currentStep === 3 ? 'text-emerald-400' : 'text-[#F97316]'
+                            }`}>
+                              {app.status.replace('_', ' ')}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Last Updated</p>
+                          <p className="text-sm font-medium text-slate-300">
+                            {new Date(app.updatedAt || app.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
+
                         {isAssisted && (
-                          <div className="md:col-span-2 pt-2 mt-2 border-t border-slate-200">
-                            <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Assigned Agent</p>
-                            <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                              {app.agentDetails ? (
-                                <>
-                                  <User className="h-4 w-4 text-purple-600" /> {app.agentDetails.fullName}
-                                </>
-                              ) : (
-                                <span className="text-slate-500 flex items-center gap-2"><Clock className="h-4 w-4" /> Pending Assignment</span>
-                              )}
+                          <div className="flex flex-col gap-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Agent</p>
+                            <p className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                              {app.agentDetails ? app.agentDetails.fullName : 'Pending Assignment'}
                             </p>
                           </div>
                         )}
                       </div>
 
                       {/* Tracking Stepper */}
-                      <div className="relative mt-4 px-4">
-                        <div className="absolute top-5 left-12 right-12 h-1 bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-1000 ${isError ? 'bg-red-500' : 'bg-green-500'}`}
-                            style={{ width: `${(Math.max(0, currentStep - 1) / (steps.length - 1)) * 100}%` }}
-                          />
-                        </div>
+                      <div className="relative mt-12 mb-4 px-2">
+                        <div className="absolute top-2 left-6 right-6 h-[2px] bg-slate-800/60 -z-10" />
+                        <div 
+                          className={`absolute top-2 left-6 h-[2px] transition-all duration-1000 ease-out -z-10 ${isError ? 'bg-red-500' : 'bg-[#F97316]'}`}
+                          style={{ width: `calc(${(Math.max(0, currentStep - 1) / (steps.length - 1)) * 100}% - 3rem)` }}
+                        />
                         
-                        <div className="flex justify-between relative z-10">
+                        <div className="flex justify-between">
                           {steps.map((step, index) => {
                             const stepNumber = index + 1;
                             const isActive = currentStep >= stepNumber;
                             const isCurrent = currentStep === stepNumber || (currentStep === 3 && stepNumber === 3);
-                            const StepIcon = isError && stepNumber === 3 ? XCircle : isActive ? CheckCircle : step.icon;
+                            const isRejected = isError && stepNumber === 3;
                             
+                            let circleColor = "border-slate-800 bg-[#030712] text-slate-600";
+                            if (isActive) {
+                              if (isRejected) circleColor = "border-red-500 bg-red-500/10 text-red-500";
+                              else circleColor = "border-[#F97316] bg-[#F97316]/10 text-[#F97316]";
+                            }
+
                             return (
-                              <div key={step.id} className="flex flex-col items-center">
-                                <div className={`h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm transition-colors duration-500 ${
-                                  isActive 
-                                    ? (isError && stepNumber === 3 ? 'bg-red-500 text-white' : 'bg-green-500 text-white') 
-                                    : 'bg-slate-100 text-slate-400'
-                                } ${isCurrent ? 'ring-4 ring-green-500/20' : ''}`}>
-                                  <StepIcon className="h-5 w-5" />
-                                </div>
-                                <span className={`text-xs font-bold mt-2 uppercase tracking-wider ${
-                                  isActive ? (isError && stepNumber === 3 ? 'text-red-600' : 'text-green-600') : 'text-slate-400'
-                                }`}>
+                              <div key={step.id} className="flex flex-col items-center gap-3">
+                                <div className={`h-4 w-4 rounded-full border-[2px] transition-colors duration-500 ${circleColor} ${isCurrent ? 'ring-4 ring-[#F97316]/20' : ''}`} />
+                                <span className={`text-[10px] font-semibold tracking-widest uppercase transition-colors duration-300 ${isActive ? (isRejected ? 'text-red-400' : 'text-slate-300') : 'text-slate-600'}`}>
                                   {stepNumber === 3 && isError ? 'Rejected' : stepNumber === 3 && isActive ? 'Approved' : step.label}
                                 </span>
                               </div>
@@ -188,8 +178,8 @@ export default function ApplicationTracking() {
                           })}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 </motion.div>
               );
             })}

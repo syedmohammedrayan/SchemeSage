@@ -112,141 +112,108 @@ export default function ApplicationHistory() {
 
 
       {/* Screen layout hides during print */}
-      <div className="print:hidden">
-        <header className="bg-[#020617] text-white pt-16 pb-12 px-4 shadow-xl border-b border-white/10 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-transparent pointer-events-none" />
+      <div className="print:hidden font-sans selection:bg-[#F97316]/20 bg-[#030712] min-h-[100vh] text-slate-200 pb-32">
+        <header className="pt-24 pb-16 px-6 border-b border-slate-800/60 relative">
           <div className="container mx-auto max-w-6xl relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <FileText className="h-6 w-6 text-green-400" />
-              <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-400/20 px-3 py-1 uppercase tracking-[0.2em] text-[10px] font-black backdrop-blur-sm">
-                Archive
-              </Badge>
-            </div>
-            <h1 className="font-heading font-black text-3xl md:text-5xl tracking-tight mb-3">
-              Applications <span className="text-green-400">History</span>
+            <h1 className="text-3xl font-semibold text-slate-100 tracking-tight mb-4">
+              Applications History
             </h1>
-            <p className="text-slate-400 max-w-xl leading-relaxed">
-              A complete, permanent archive of every application you have ever submitted.
+            <p className="text-slate-400 max-w-xl text-sm leading-relaxed">
+              A complete, permanent archive of every application you have ever submitted, beautifully organized.
             </p>
           </div>
         </header>
 
-        <main className="container mx-auto max-w-6xl px-4 -mt-6">
+        <main className="container mx-auto max-w-6xl px-6 pt-12">
           {applications.length === 0 ? (
-            <Card className="shadow-2xl border-white/10 bg-card p-12 text-center flex flex-col items-center justify-center">
-              <div className="h-24 w-24 bg-green-50 rounded-full flex items-center justify-center mb-6">
-                <FileText className="h-10 w-10 text-green-400" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">No application history available</h2>
-              <p className="text-muted-foreground max-w-sm mb-8">
+            <div className="border border-slate-800/60 rounded-xl p-12 text-center flex flex-col items-center justify-center">
+              <h2 className="text-lg font-semibold text-slate-300 mb-2">No application history available</h2>
+              <p className="text-slate-500 text-sm max-w-sm mb-8">
                 Start exploring government schemes and submitting applications to see your history here.
               </p>
-              <Button size="lg" asChild className="gap-2 bg-green-600 hover:bg-green-700">
-                <Link to="/discover">Start Exploring</Link>
-              </Button>
-            </Card>
+              <button onClick={() => window.location.href = '/discover'} className="bg-white text-black px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors flex items-center gap-2">
+                Start Exploring
+              </button>
+            </div>
           ) : (
             <>
               {/* Analytics Top Section */}
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-                <Card className="shadow-md border-0 ring-1 ring-slate-200">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total</p>
-                    <p className="text-3xl font-black text-slate-900">{total}</p>
-                  </CardContent>
-                </Card>
-                <Card className="shadow-md border-0 ring-1 ring-green-200 bg-green-50/50">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-green-600 mb-1">Approved</p>
-                    <p className="text-3xl font-black text-green-700">{approved}</p>
-                  </CardContent>
-                </Card>
-                <Card className="shadow-md border-0 ring-1 ring-red-200 bg-red-50/50">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-red-600 mb-1">Rejected</p>
-                    <p className="text-3xl font-black text-red-700">{rejected}</p>
-                  </CardContent>
-                </Card>
-                <Card className="shadow-md border-0 ring-1 ring-amber-200 bg-amber-50/50">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-1">Pending</p>
-                    <p className="text-3xl font-black text-amber-700">{pending}</p>
-                  </CardContent>
-                </Card>
-                <Card className="shadow-md border-0 ring-1 ring-purple-200 bg-purple-50/50">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-1">Assisted</p>
-                    <p className="text-3xl font-black text-purple-700">{assisted}</p>
-                  </CardContent>
-                </Card>
-                <Card className="shadow-md border-0 ring-1 ring-blue-200 bg-blue-50/50">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">Manual</p>
-                    <p className="text-3xl font-black text-blue-700">{manual}</p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-12">
+                {[
+                  { label: "Total Apps", value: total, color: "text-slate-200" },
+                  { label: "Approved", value: approved, color: "text-emerald-400" },
+                  { label: "Rejected", value: rejected, color: "text-red-400" },
+                  { label: "Pending", value: pending, color: "text-[#F97316]" },
+                  { label: "Assisted", value: assisted, color: "text-purple-400" },
+                  { label: "Manual", value: manual, color: "text-blue-400" },
+                ].map((stat, i) => (
+                  <div key={i} className="border border-slate-800/60 rounded-xl bg-[#0F172A]/30 p-6 flex flex-col items-center justify-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-2">{stat.label}</p>
+                    <p className={`text-3xl font-semibold ${stat.color}`}>{stat.value}</p>
+                  </div>
+                ))}
               </div>
 
               {/* Data Table */}
-              <Card className="shadow-xl border-0 ring-1 ring-slate-200 overflow-hidden">
+              {/* Data Table */}
+              <div className="border border-slate-800/60 rounded-xl bg-[#0F172A]/30 overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-500 uppercase bg-slate-100 border-b border-slate-200 font-bold tracking-wider">
+                  <table className="w-full text-sm text-left border-collapse">
+                    <thead className="text-[10px] text-slate-500 uppercase border-b border-slate-800/60 font-semibold tracking-widest">
                       <tr>
-                        <th className="px-6 py-4">Scheme Name</th>
-                        <th className="px-6 py-4">Application Date</th>
-                        <th className="px-6 py-4">Method</th>
-                        <th className="px-6 py-4">Status / Outcome</th>
-                        <th className="px-6 py-4 text-right">Actions</th>
+                        <th className="px-8 py-5">Scheme Name</th>
+                        <th className="px-8 py-5">Application Date</th>
+                        <th className="px-8 py-5">Method</th>
+                        <th className="px-8 py-5">Status / Outcome</th>
+                        <th className="px-8 py-5 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-slate-800/60">
                       {applications.map((app: any) => {
                         const isAssisted = app.type === 'assisted';
                         
-                        let StatusIcon = Clock;
-                        let statusColor = "text-slate-500 bg-slate-100";
-                        if (app.status === 'approved') { StatusIcon = CheckCircle; statusColor = "text-green-700 bg-green-100 border-green-200"; }
-                        if (app.status === 'rejected') { StatusIcon = XCircle; statusColor = "text-red-700 bg-red-100 border-red-200"; }
-                        if (app.status === 'in_review') { StatusIcon = Activity; statusColor = "text-blue-700 bg-blue-100 border-blue-200"; }
-                        if (app.status === 'document_pending') { StatusIcon = AlertCircle; statusColor = "text-amber-700 bg-amber-100 border-amber-200"; }
+                        let statusColor = "text-slate-400";
+                        if (app.status === 'approved') { statusColor = "text-emerald-400"; }
+                        if (app.status === 'rejected') { statusColor = "text-red-400"; }
+                        if (app.status === 'in_review') { statusColor = "text-[#F97316]"; }
+                        if (app.status === 'document_pending') { statusColor = "text-amber-400"; }
 
                         return (
-                          <tr key={app.id} className="bg-white border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4 font-bold text-slate-900 max-w-[300px]">
-                              <p className="truncate">{app.schemeName}</p>
-                              <p className="font-mono text-xs text-slate-400 font-normal mt-0.5">ID: {app.trackingId || app.id.slice(0, 8).toUpperCase()}</p>
+                          <tr key={app.id} className="hover:bg-slate-800/30 transition-colors group">
+                            <td className="px-8 py-5">
+                              <p className="font-semibold text-slate-200 max-w-[300px] truncate group-hover:text-white transition-colors text-base">{app.schemeName}</p>
+                              <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-semibold tracking-widest uppercase bg-slate-800/50 text-slate-400 border border-slate-700/50">
+                                ID: {app.trackingId || app.id.slice(0, 8).toUpperCase()}
+                              </span>
                             </td>
-                            <td className="px-6 py-4 font-medium text-slate-600">
-                              {new Date(app.createdAt).toLocaleDateString()}
+                            <td className="px-8 py-5 font-medium text-slate-400">
+                              {new Date(app.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </td>
-                            <td className="px-6 py-4">
-                              <Badge variant="outline" className={`font-bold border-0 ${isAssisted ? 'text-purple-600 bg-purple-50' : 'text-slate-600 bg-slate-100'}`}>
-                                {isAssisted ? <User className="h-3 w-3 mr-1" /> : <FileText className="h-3 w-3 mr-1" />}
+                            <td className="px-8 py-5">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-widest uppercase ${
+                                isAssisted ? 'bg-purple-900/30 text-purple-400 border border-purple-800/50' : 'bg-blue-900/30 text-blue-400 border border-blue-800/50'
+                              }`}>
                                 {isAssisted ? 'Assisted' : 'Manual'}
-                              </Badge>
+                              </span>
                             </td>
-                            <td className="px-6 py-4">
-                              <Badge className={`capitalize font-bold border ${statusColor}`}>
-                                <StatusIcon className="h-3 w-3 mr-1.5" />
+                            <td className="px-8 py-5">
+                              <span className={`text-sm font-medium capitalize ${statusColor}`}>
                                 {app.status.replace('_', ' ')}
-                              </Badge>
+                              </span>
                             </td>
-                            <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                              <Button asChild variant="outline" size="sm" className="h-8 shadow-sm">
-                                <Link to={`/tracking/${app.id}`}><Eye className="h-3.5 w-3.5 mr-1" /> View</Link>
-                              </Button>
-                              <Button asChild variant="outline" size="sm" className="h-8 shadow-sm text-[#f97316] border-[#f97316]/30 hover:bg-[#f97316]/10">
-                                <Link to={`/tracking`}><Activity className="h-3.5 w-3.5 mr-1" /> Track</Link>
-                              </Button>
-                              <Button 
-                                variant="default" 
-                                size="sm" 
-                                className="h-8 shadow-sm"
-                                onClick={() => handleDownloadSummary(app)}
+                            <td className="px-8 py-5 text-right space-x-3 whitespace-nowrap">
+                              <Link 
+                                to={`/tracking/${app.id}`}
+                                className="inline-flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-white transition-colors border border-slate-800/60 rounded-lg px-4 py-2 hover:bg-slate-800/50"
                               >
-                                <Download className="h-3.5 w-3.5 mr-1" /> Summary
-                              </Button>
+                                View Details 
+                              </Link>
+                              <button 
+                                onClick={() => handleDownloadSummary(app)}
+                                className="inline-flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-white transition-colors border border-slate-800/60 rounded-lg px-4 py-2 hover:bg-slate-800/50"
+                              >
+                                Download <Download className="h-4 w-4" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -254,7 +221,7 @@ export default function ApplicationHistory() {
                     </tbody>
                   </table>
                 </div>
-              </Card>
+              </div>
             </>
           )}
         </main>

@@ -180,7 +180,7 @@ const Eligibility = () => {
               onClick={() => handleModeSwitch('voice')}
               className={`px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors ${
                 mode === 'voice' 
-                  ? 'bg-blue-600 text-white shadow-sm' 
+                  ? 'bg-[#F97316] text-white shadow-sm' 
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
@@ -190,7 +190,7 @@ const Eligibility = () => {
               onClick={() => handleModeSwitch('manual')}
               className={`px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors ${
                 mode === 'manual' 
-                  ? 'bg-blue-600 text-white shadow-sm' 
+                  ? 'bg-[#F97316] text-white shadow-sm' 
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
@@ -387,7 +387,7 @@ const Eligibility = () => {
               
               <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 mb-6 gap-4">
                 <h2 className="text-xl font-bold flex items-center gap-3 text-slate-100">
-                  <div className="h-10 w-10 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-500">
+                  <div className="h-10 w-10 rounded-lg bg-[#F97316]/10 flex items-center justify-center text-[#F97316]">
                     <User className="h-5 w-5" /> 
                   </div>
                   Extracted Profile
@@ -397,7 +397,7 @@ const Eligibility = () => {
                    <div className="flex flex-col">
                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Completeness</span>
                      <div className="h-2 w-32 bg-slate-800 rounded-full overflow-hidden shrink-0">
-                       <div className="h-full bg-blue-600" style={{ width: `${result.profileCompleteness || 0}%` }} />
+                       <div className="h-full bg-[#F97316]" style={{ width: `${result.profileCompleteness || 0}%` }} />
                      </div>
                    </div>
                    <span className="text-base font-bold text-slate-200">
@@ -426,7 +426,7 @@ const Eligibility = () => {
               {/* Optional: Translation Feedback */}
               {result.translatedText && (
                 <div className="mt-8 pt-6 border-t border-slate-800 flex gap-3 items-center justify-center">
-                   <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                   <div className="h-1.5 w-1.5 rounded-full bg-[#F97316]" />
                    <p className="text-sm text-slate-400 font-medium">Understood as: <span className="text-slate-300">"{result.translatedText}"</span></p>
                 </div>
               )}
@@ -468,7 +468,7 @@ const Eligibility = () => {
                         <div className="p-6 border-b border-slate-800">
                           <div className="flex justify-between items-start mb-4">
                             <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded border ${
-                              isStrong ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' : 'text-slate-400 bg-slate-800 border-slate-700'
+                              isStrong ? 'text-[#F97316] bg-[#F97316]/10 border-[#F97316]/20' : 'text-slate-400 bg-slate-800 border-slate-700'
                             }`}>
                               {isStrong ? 'Strong Match' : 'Potential Match'} • {match.matchScore}%
                             </span>
@@ -494,7 +494,7 @@ const Eligibility = () => {
                             <div className="mt-2">
                               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Why Recommended</p>
                               <div className="flex items-start gap-3 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-                                <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                                <CheckCircle2 className="h-4 w-4 text-[#F97316] shrink-0 mt-0.5" />
                                 <span className="text-sm font-medium text-slate-300">{match.reason}</span>
                               </div>
                             </div>
@@ -511,7 +511,7 @@ const Eligibility = () => {
                             View Details
                           </Button>
                           <Button 
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-11 rounded-lg font-semibold border-0"
+                            className="flex-1 bg-[#F97316] hover:bg-[#EA580C] text-white h-11 rounded-lg font-semibold border-0"
                             onClick={() => navigate(`/apply/${match.scheme?.id}`)}
                           >
                             Apply Now <ArrowRight className="ml-2 h-4 w-4" />

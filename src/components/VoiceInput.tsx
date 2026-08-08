@@ -11,6 +11,7 @@ export default function VoiceInput({ onResult }: VoiceInputProps) {
   const [transcript, setTranscript] = useState("");
   const [language, setLanguage] = useState("hi-IN"); // Defaulting to Hindi as per request
   const transcriptRef = useRef("");
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     // Stop listening and clear transcript if language changes
@@ -24,6 +25,9 @@ export default function VoiceInput({ onResult }: VoiceInputProps) {
   const toggleListening = () => {
     if (isListening) {
       setIsListening(false);
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
       if (transcriptRef.current.trim().length > 0) {
         onResult(transcriptRef.current.trim(), language.split('-')[0]);
       }
@@ -37,7 +41,8 @@ export default function VoiceInput({ onResult }: VoiceInputProps) {
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognitionRef.current = recognition;
+    recognition.continuous = false; // Process automatically when user stops speaking
     recognition.interimResults = true;
     recognition.lang = language;
 
@@ -123,7 +128,7 @@ export default function VoiceInput({ onResult }: VoiceInputProps) {
               className={`flex items-center justify-center h-28 w-28 rounded-full transition-colors duration-200 shadow-md ${
                 isListening 
                   ? "bg-red-500 hover:bg-red-600" 
-                  : "bg-blue-600 hover:bg-blue-700"
+                  : "bg-[#F97316] hover:bg-[#EA580C]"
               }`}
             >
               {isListening ? (
@@ -134,16 +139,25 @@ export default function VoiceInput({ onResult }: VoiceInputProps) {
             </button>
           </div>
 
-          <div className="mt-12 text-center min-h-[80px] w-full flex flex-col items-center justify-center">
+          <div className="mt-12 text-center w-full flex flex-col items-center justify-center">
             {isListening ? (
               <div className="w-full flex flex-col items-center">
                 <span className="flex items-center gap-2 text-red-500 font-semibold uppercase tracking-wider text-xs mb-3">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   Recording
                 </span>
-                <p className="text-slate-200 text-lg font-medium min-h-[32px] max-w-lg px-4">
+                <p className="text-slate-200 text-lg font-medium min-h-[32px] max-w-lg px-4 mb-6">
                   {transcript || "Listening..."}
                 </p>
+                
+                {transcript.length > 0 && (
+                  <button 
+                    onClick={toggleListening}
+                    className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-6 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2"
+                  >
+                    Process Input Now
+                  </button>
+                )}
               </div>
             ) : (
               <div className="bg-slate-800/50 border border-slate-700/50 px-6 py-5 rounded-xl max-w-md w-full flex items-start gap-4">

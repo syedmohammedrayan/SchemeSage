@@ -39,25 +39,65 @@ export default function Payment() {
     fetchPlanDetails();
   }, [planKey, navigate, toast]);
 
+  useEffect(() => {
+    // Load Razorpay script
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => { document.body.removeChild(script); };
+  }, []);
+
   const handlePayment = async () => {
     setIsProcessing(true);
     try {
       // 1. Create order
       const orderData = await api.post<any>('/subscription/purchase', { planKey });
       
-      // 2. Verify order immediately to simulate successful local checkout
-      // In a real integration, we'd pass this to Stripe/Razorpay UI or process card directly
-      await api.post('/subscription/verify', {
-        orderId: orderData.orderId,
-        paymentId: `sim_pay_${Date.now()}`,
-        signature: 'mock_sig_or_bypassed_by_server'
-      });
+      if (orderData.isMock) {
+        // Automatically verify mock payment
+        await api.post('/subscription/verify', {
+          orderId: orderData.orderId,
+          paymentId: `sim_pay_${Date.now()}`,
+          signature: 'mock_sig_or_bypassed_by_server'
+        });
+        toast({ title: "Payment Successful (Mock)!", description: "Your subscription is now active." });
+        navigate("/agent/dashboard");
+        setIsProcessing(false);
+        return;
+      }
 
-      toast({ title: "Payment Successful!", description: "Your subscription is now active." });
-      navigate("/agent/dashboard");
+      // 2. Open Razorpay UI
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "SchemeSage.gov",
+        description: `Subscription: ${plan.name}`,
+        order_id: orderData.orderId,
+        handler: async (response: any) => {
+          try {
+            await api.post('/subscription/verify', {
+              orderId: orderData.orderId,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature || 'mock_sig_or_bypassed_by_server'
+            });
+            toast({ title: "Payment Successful!", description: "Your subscription is now active." });
+            navigate("/agent/dashboard");
+          } catch(e: any) {
+            toast({ title: "Payment Verification Failed", description: e.message, variant: "destructive" });
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        theme: { color: "#38bdf8" },
+        modal: { ondismiss: () => setIsProcessing(false) }
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
     } catch (e: any) {
       toast({ title: "Payment Failed", description: e.message || "An error occurred during payment processing.", variant: "destructive" });
-    } finally {
       setIsProcessing(false);
     }
   };

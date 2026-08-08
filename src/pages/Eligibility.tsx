@@ -383,51 +383,41 @@ const Eligibility = () => {
           <div className="mt-8 space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
             
             {/* User Profile Summary */}
-            <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-8 shadow-xl relative">
+            <div className="border border-slate-800/60 rounded-xl p-8">
               
-              <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 mb-6 gap-4">
-                <h2 className="text-xl font-bold flex items-center gap-3 text-slate-100">
-                  <div className="h-10 w-10 rounded-lg bg-[#F97316]/10 flex items-center justify-center text-[#F97316]">
-                    <User className="h-5 w-5" /> 
-                  </div>
-                  Extracted Profile
+              <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-slate-800/60 pb-5 mb-8 gap-4">
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-widest">
+                  Profile Details
                 </h2>
                 
-                <div className="flex items-center gap-4 bg-slate-900 px-5 py-2.5 rounded-xl border border-slate-800">
-                   <div className="flex flex-col">
-                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Completeness</span>
-                     <div className="h-2 w-32 bg-slate-800 rounded-full overflow-hidden shrink-0">
-                       <div className="h-full bg-[#F97316]" style={{ width: `${result.profileCompleteness || 0}%` }} />
+                <div className="flex items-center gap-4">
+                   <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Completeness</span>
+                   <div className="flex items-center gap-3">
+                     <div className="h-[2px] w-32 bg-slate-800 overflow-hidden">
+                       <div className="h-full bg-slate-300 transition-all duration-500" style={{ width: `${result.profileCompleteness || 0}%` }} />
                      </div>
+                     <span className="text-xs font-medium text-slate-300">
+                       {result.profileCompleteness || 0}%
+                     </span>
                    </div>
-                   <span className="text-base font-bold text-slate-200">
-                     {result.profileCompleteness || 0}%
-                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-6">
                 {Object.entries(result.profile || {}).map(([key, val]: any) => {
                   if (val === null || val === undefined || val === '') return null;
                   return (
-                    <div key={key} className="flex items-start gap-4 p-4 rounded-xl hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-800">
-                      <div className="h-10 w-10 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 border border-slate-800 text-slate-400">
-                        {getProfileIcon(key)}
-                      </div>
-                      <div className="flex flex-col justify-center">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{key}</p>
-                        <p className="font-semibold text-slate-200 text-sm capitalize">{String(val)}</p>
-                      </div>
+                    <div key={key} className="flex flex-col gap-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{key}</p>
+                      <p className="text-sm font-medium text-slate-200 capitalize">{String(val)}</p>
                     </div>
                   );
                 })}
               </div>
               
-              {/* Optional: Translation Feedback */}
               {result.translatedText && (
-                <div className="mt-8 pt-6 border-t border-slate-800 flex gap-3 items-center justify-center">
-                   <div className="h-1.5 w-1.5 rounded-full bg-[#F97316]" />
-                   <p className="text-sm text-slate-400 font-medium">Understood as: <span className="text-slate-300">"{result.translatedText}"</span></p>
+                <div className="mt-8 pt-5 border-t border-slate-800/60">
+                   <p className="text-xs font-medium text-slate-500">Input Reference: <span className="text-slate-300 font-normal">"{result.translatedText}"</span></p>
                 </div>
               )}
             </div>

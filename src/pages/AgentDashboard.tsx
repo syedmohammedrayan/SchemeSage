@@ -222,13 +222,17 @@ const AgentDashboard = () => {
            
            {/* User Profile & Logout */}
            <div className="p-6 border-t border-white/5 space-y-4 bg-[#0f172a]/40">
-              <div className="flex items-center gap-3">
-                 <Avatar className="h-10 w-10 border border-white/10 ring-2 ring-blue-500/20">
+              <div 
+                 onClick={() => navigate('/profile')}
+                 className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 -mx-2 rounded-xl transition-all group"
+                 title="View/Edit Profile"
+              >
+                 <Avatar className="h-10 w-10 border border-white/10 ring-2 ring-blue-500/20 group-hover:ring-blue-400/50 transition-all">
                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.fullName || "Agent"}&backgroundColor=0f172a&textColor=38bdf8`} />
                    <AvatarFallback className="bg-slate-800 text-xs">{user?.fullName?.charAt(0) || "A"}</AvatarFallback>
                  </Avatar>
                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{user?.fullName || "Field Agent"}</p>
+                    <p className="text-sm font-bold text-white truncate group-hover:text-blue-300 transition-colors">{user?.fullName || "Field Agent"}</p>
                     <p className="text-xs text-slate-400 truncate flex items-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5"></span>Online</p>
                  </div>
               </div>

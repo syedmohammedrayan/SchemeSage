@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Shield, Camera, Mail, Phone, MapPin, User, Calendar,
   ShieldCheck, ChevronLeft, Save, Loader2, Briefcase,
-  Hash, Building2, CheckCircle2, Clock
+  Hash, Building2, CheckCircle2, Clock, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -124,13 +124,26 @@ const Profile = () => {
                       <Loader2 className="h-6 w-6 animate-spin text-white" />
                     </div>
                   )}
-                  <label className="absolute -bottom-1 -right-1 cursor-pointer">
+                  <label className="absolute -bottom-1 -right-1 cursor-pointer z-10">
                     <div className="h-8 w-8 rounded-full bg-accent text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
                       <Camera className="h-4 w-4" />
                     </div>
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                   </label>
-                </div>
+                  
+                  {formData.avatarUrl && (
+                    <button 
+                      className="absolute -bottom-1 -left-1 h-8 w-8 rounded-full bg-destructive text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform z-10"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFormData(prev => ({ ...prev, avatarUrl: "" }));
+                        toast({ title: "Photo removed", description: "Click Save to apply changes." });
+                      }}
+                      title="Remove Photo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
 
                 <h2 className="font-heading font-bold text-lg text-foreground">{user.fullName}</h2>
                 <p className="text-sm text-muted-foreground mb-3">{user.email}</p>

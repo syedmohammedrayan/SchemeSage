@@ -102,6 +102,11 @@ function extractProfileFromText(text: string): Record<string, any> {
 // ─── Scheme Matching Engine (Node.js Native) ─────────────────────────────────
 function matchSchemes(profile: Record<string, any>, schemes: any[]) {
   const results: any[] = [];
+  
+  // If the profile is completely empty (0% complete / irrelevant input), do not suggest anything
+  if (Object.keys(profile).length === 0 || getCompleteness(profile) === 0) {
+    return {};
+  }
 
   for (const scheme of schemes) {
     const elig = scheme.eligibility || {};

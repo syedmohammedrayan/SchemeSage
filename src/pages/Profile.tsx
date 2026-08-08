@@ -144,6 +144,7 @@ const Profile = () => {
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
+                </div>
 
                 <h2 className="font-heading font-bold text-lg text-foreground">{user.fullName}</h2>
                 <p className="text-sm text-muted-foreground mb-3">{user.email}</p>

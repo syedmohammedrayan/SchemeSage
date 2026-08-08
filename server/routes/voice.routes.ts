@@ -107,7 +107,6 @@ function matchSchemes(profile: Record<string, any>, schemes: any[]) {
     const elig = scheme.eligibility || {};
     let score = 0;
     const reasons: string[] = [];
-    let disqualified = false;
 
     // --- State ---
     const sStates: string[] = elig.states || [];
@@ -115,14 +114,14 @@ function matchSchemes(profile: Record<string, any>, schemes: any[]) {
     if (profile.state && sStates.length && !isNational) {
       if (sStates.map((s: string) => s.toLowerCase()).includes(profile.state.toLowerCase())) {
         score += 25; reasons.push(`✓ ${profile.state} Resident`);
-      } else { disqualified = true; }
+      } else { 
+        continue; // STRICT FILTER: Scheme is state-specific and doesn't match user's state
+      }
     } else if (isNational) {
       score += 18; reasons.push('✓ National Scheme');
     } else if (!profile.state && sStates.length && !isNational) {
       score += 8; // partial for unknown state
     }
-
-    if (disqualified) continue;
 
     // --- Occupation (most important for voice like "I am a farmer") ---
     const sOccs: string[] = elig.occupations || [];
@@ -130,7 +129,7 @@ function matchSchemes(profile: Record<string, any>, schemes: any[]) {
       if (sOccs.map((o: string) => o.toLowerCase()).includes(profile.occupation.toLowerCase())) {
         score += 30; reasons.push(`✓ ${profile.occupation}`);
       } else {
-        score += 3; // small for mismatched occupation
+        continue; // STRICT FILTER: Scheme is occupation-specific and doesn't match user's occupation
       }
     } else if (profile.occupation && (!sOccs.length || sOccs.includes('All'))) {
       score += 12; reasons.push('✓ Open to All Occupations');
@@ -166,7 +165,7 @@ function matchSchemes(profile: Record<string, any>, schemes: any[]) {
     const sGender = (elig.gender || 'all').toLowerCase();
     if (profile.gender && sGender !== 'all') {
       if (profile.gender.toLowerCase() === sGender) { score += 10; reasons.push(`✓ ${profile.gender} Applicable`); }
-      else { continue; }
+      else { continue; } // strict disqualification
     } else if (sGender === 'all') {
       score += 5;
     } else {
@@ -178,7 +177,7 @@ function matchSchemes(profile: Record<string, any>, schemes: any[]) {
     if (profile.category && sCats.length && !sCats.includes('All')) {
       if (sCats.map((c: string) => c.toLowerCase()).includes(profile.category.toLowerCase())) {
         score += 15; reasons.push(`✓ ${profile.category} Category`);
-      } else { continue; }
+      } else { continue; } // strict disqualification
     } else if (!sCats.length || sCats.includes('All')) {
       score += 5;
     } else {

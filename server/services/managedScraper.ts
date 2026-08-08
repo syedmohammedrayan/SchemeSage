@@ -101,37 +101,17 @@ export async function runManagedScraper(targetUrl: string = 'https://www.india.g
 
       // Browser-Use API Fallback for dynamic/JS-heavy pages
       if (!rawText || rawText.length < 200 || rawText.toLowerCase().includes('enable javascript')) {
-        console.log(`[☁️ Browser-Use] Detected dynamic page. Routing through Browser-Use Cloud API...`);
-        try {
-          // Simulated Browser-Use Cloud extraction
-          const browserUseUrl = 'https://api.browser-use.com/v1/extract';
-          const payload = { url: targetUrl, extract_rules: ['scheme_name', 'eligibility', 'benefits'] };
-          // const buResponse = await axios.post(browserUseUrl, payload, { headers: { 'Authorization': `Bearer ${process.env.BROWSER_USE_API_KEY}` } });
-          
-          // Mock successful dynamic extraction since we lack a real key in this env
-          await delay(2000); // Simulate network overhead of headless browser
-          rawText = `Scheme Name: Example Dynamic Scheme from ${targetUrl}
-Benefits: Financial assistance of ₹50,000 for beneficiaries.
-Eligibility: Must be below 30 years. Income below 2 lakh. General category allowed.
-Required Documents: Aadhaar, PAN, Bank Details.`;
-          
-          console.log(`[☁️ Browser-Use] Extraction complete.`);
-        } catch (buErr: any) {
-           throw new Error("Failed to extract meaningful text even with Browser-Use Cloud fallback.");
-        }
+        console.log(`[☁️ Browser-Use] Detected dynamic page.`);
+        // Since we don't have puppeteer or a valid Browser-Use API key in this environment, we fail gracefully
+        throw new Error("Dynamic JS-heavy page detected. Real browser required to extract data from this portal.");
       }
 
       console.log(`[🧠 AI Extractor] Attempt ${attempt}: Extracted ${rawText.length} characters.`);
 
       let schemesToSave: any[] = [];
-      const regexResults = performRegexExtraction(rawText, targetUrl);
       
-      if (regexResults && regexResults.length > 0) {
-        console.log(`[⚡ AI Managed Scraper] Regex extraction successful, bypassing Gemini.`);
-        schemesToSave = regexResults;
-      } else {
-        console.log(`[🤖 AI Managed Scraper] Regex confidence low. Using Gemini-2.5-Flash-Lite...`);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+      console.log(`[🤖 AI Managed Scraper] Extracting using Gemini 1.5 Flash...`);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         
         const prompt = `
           You are an expert AI extraction agent.
@@ -161,8 +141,6 @@ Required Documents: Aadhaar, PAN, Bank Details.`;
         if (aiText.endsWith('\`\`\`')) aiText = aiText.substring(0, aiText.length - 3);
 
         schemesToSave = JSON.parse(aiText.trim());
-      }
-
       if (!Array.isArray(schemesToSave) || schemesToSave.length === 0) {
         throw new Error("No schemes discovered by regex or AI.");
       }

@@ -1018,8 +1018,8 @@ const GovernmentDashboard = () => {
                         try {
                           toast({ title: "Agent Dispatched", description: "Browser Use Cloud session started..." });
                           const res = await api.post<any>('/scrape/managed', { url });
-                          toast({ title: "Discovery Complete", description: `Found ${res.count} new data points.` });
-                          fetchScrapedSchemes(); 
+                          toast({ title: "Discovery Queued", description: "The AI agent is navigating the site in the background. You'll be notified when new schemes are found." });
+                          // fetchScrapedSchemes() is removed because the socket listener in App.tsx will invalidate and fetch when done
                         } catch (err: any) {
                           // Try to extract details from the API error
                           const errorDescription = err.details || err.message || "Failed to reach portal";

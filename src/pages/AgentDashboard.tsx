@@ -172,149 +172,190 @@ const AgentDashboard = () => {
   const activeCases = helpRequests.filter(req => req.status === 'accepted' && req.assignedAgentId === agentId);
 
   return (
-    <div className="min-h-screen bg-[#020617] selection:bg-accent/30 selection:text-white">
-      {/* Sleek Enterprise Header */}
-      <header className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-           <Link to="/agent-dashboard" className="flex items-center gap-2 group">
-              <div className="h-8 w-8 rounded-lg bg-accent/20 flex items-center justify-center group-hover:bg-accent transition-colors">
-                <Shield className="h-4 w-4 text-accent group-hover:text-white transition-colors" />
-              </div>
-              <span className="font-heading font-black text-xl text-white tracking-tighter">
-                SCHEMESAGE<span className="text-accent">.GOV</span>
-              </span>
-           </Link>
+    <div className="flex h-screen bg-[#020617] text-slate-300 font-sans selection:bg-blue-500/30 selection:text-white overflow-hidden">
+      {/* Dynamic Background */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] opacity-20 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 blur-[100px] rounded-full mix-blend-screen" />
+      </div>
 
-           <div className="flex items-center gap-4">
-              <Badge variant="outline" className="hidden sm:flex border-accent/20 text-accent font-black tracking-widest text-[9px] uppercase px-3 py-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse mr-2"></span>
-                Secure Uplink Active
-              </Badge>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-white/5 border border-white/10">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.fullName || "Agent"}&backgroundColor=0f172a&textColor=38bdf8`} />
-                      <AvatarFallback className="bg-slate-800 text-xs">{user?.fullName?.charAt(0) || "A"}</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 bg-slate-900 border-white/10 text-white p-2" align="end">
-                  <div className="px-2 py-3 border-b border-white/10 mb-2">
-                    <p className="text-sm font-black tracking-tight">{user?.fullName}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">UID: {user?.id?.substring(0,8)}</p>
-                  </div>
-                  <DropdownMenuItem className="focus:bg-white/10 focus:text-white cursor-pointer py-3 rounded-xl" onClick={() => navigate('/profile')}>
-                    <FileText className="mr-3 h-4 w-4 text-accent" />
-                    <span className="font-bold">My Profile</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="focus:bg-destructive/10 focus:text-destructive text-destructive cursor-pointer py-3 rounded-xl" onClick={handleLogout}>
-                    <LogOut className="mr-3 h-4 w-4" />
-                    <span className="font-bold">Logout</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+      <Tabs defaultValue="overview" className="flex w-full h-full z-10">
+        
+        {/* Sidebar */}
+        <div className="w-72 flex-shrink-0 bg-[#0f172a]/60 backdrop-blur-3xl border-r border-white/5 flex flex-col h-full relative z-20">
+           <div className="p-6 flex-1 flex flex-col overflow-y-auto scrollbar-hide">
+              <Link to="/agent-dashboard" className="flex items-center gap-3 group mb-12">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all duration-300">
+                  <Shield className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <span className="font-heading font-black text-xl text-white tracking-tight block leading-none">
+                    SCHEMESAGE
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-400 tracking-[0.2em] uppercase">Gov Portal</span>
+                </div>
+              </Link>
+              
+              <TabsList className="flex flex-col h-auto bg-transparent p-0 space-y-2 items-start justify-start w-full">
+                <TabsTrigger value="overview" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold">
+                  <LayoutDashboard className="h-4 w-4 mr-3" /> Overview
+                </TabsTrigger>
+                <TabsTrigger value="pool" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold flex items-center justify-between">
+                  <div className="flex items-center"><Search className="h-4 w-4 mr-3" /> Application Pool</div>
+                  {poolApps.length > 0 && <Badge className="bg-red-500/20 text-red-400 hover:bg-red-500/30 border-0">{poolApps.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="active" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold flex items-center justify-between">
+                  <div className="flex items-center"><CheckCircle className="h-4 w-4 mr-3" /> My Queue</div>
+                  {activeApps.length > 0 && <Badge className="bg-blue-500/20 text-blue-400 border-0">{activeApps.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="wallet" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold">
+                  <Wallet className="h-4 w-4 mr-3" /> Ledger & Wallet
+                </TabsTrigger>
+                <TabsTrigger value="assistance" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold flex items-center justify-between">
+                  <div className="flex items-center"><LifeBuoy className="h-4 w-4 mr-3" /> Help Centre</div>
+                  {(pendingLeads.length + activeCases.length) > 0 && <Badge className="bg-red-500/20 text-red-400 border-0">{pendingLeads.length + activeCases.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="history" className="w-full justify-start px-4 py-3 rounded-xl data-[state=active]:bg-blue-500/10 data-[state=active]:text-blue-400 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all font-semibold">
+                  <FileText className="h-4 w-4 mr-3" /> History
+                </TabsTrigger>
+              </TabsList>
+           </div>
+           
+           {/* User Profile & Logout */}
+           <div className="p-6 border-t border-white/5 space-y-4 bg-[#0f172a]/40">
+              <div className="flex items-center gap-3">
+                 <Avatar className="h-10 w-10 border border-white/10 ring-2 ring-blue-500/20">
+                   <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.fullName || "Agent"}&backgroundColor=0f172a&textColor=38bdf8`} />
+                   <AvatarFallback className="bg-slate-800 text-xs">{user?.fullName?.charAt(0) || "A"}</AvatarFallback>
+                 </Avatar>
+                 <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{user?.fullName || "Field Agent"}</p>
+                    <p className="text-xs text-slate-400 truncate flex items-center"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5"></span>Online</p>
+                 </div>
+              </div>
+              <Button onClick={handleLogout} variant="ghost" className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-xl transition-all">
+                 <LogOut className="h-4 w-4 mr-2" /> Logout securely
+              </Button>
            </div>
         </div>
-      </header>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-black text-white font-heading tracking-tight uppercase">
-            Field Ops Terminal
-          </h1>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase">Status: Authenticated</p>
-            <p className="text-sm font-black text-accent">{user?.fullName || "Field Officer"}</p>
-          </div>
-        </div>
-
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-slate-900 border border-white/20 p-1 h-14 w-full flex overflow-x-auto overflow-y-hidden">
-            <TabsTrigger value="overview" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="pool" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
-              Application Pool
-              {poolApps.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center animate-pulse">{poolApps.length}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="active" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">My Queue ({activeApps.length})</TabsTrigger>
-            <TabsTrigger value="wallet" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">
-              Ledger & Wallet
-            </TabsTrigger>
-            <TabsTrigger value="assistance" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold relative">
-              Help Centre
-              {(pendingLeads.length + activeCases.length) > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center">{pendingLeads.length + activeCases.length}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="history" className="min-w-fit flex-1 h-full data-[state=active]:bg-accent data-[state=active]:text-white transition-all font-bold">History</TabsTrigger>
-          </TabsList>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-transparent relative z-10 scrollbar-hide">
+            <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-[#020617]/40 backdrop-blur-md sticky top-0 z-40">
+                <h1 className="text-2xl font-bold text-white font-heading tracking-tight">Field Ops Terminal</h1>
+                <Badge variant="outline" className="border-blue-500/30 text-blue-400 bg-blue-500/10 px-4 py-1.5 rounded-full backdrop-blur-md">
+                  <Shield className="h-3 w-3 mr-2" /> Secure Uplink
+                </Badge>
+            </header>
+            
+            <div className="p-8 max-w-5xl mx-auto w-full">
           
-          <TabsContent value="overview" className="space-y-6">
+          <TabsContent value="overview" className="space-y-6 mt-0 outline-none animate-in fade-in-50 slide-in-from-bottom-4 duration-500">
             {/* Subscription & Performance Overview */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               
-              {/* Subscription Card */}
-              <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-white/10 shadow-2xl relative overflow-hidden col-span-1 lg:col-span-2">
+              {/* Subscription Card - Premium Glassmorphism */}
+              <Card className="bg-[#0f172a]/60 backdrop-blur-2xl border-white/5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] relative overflow-hidden col-span-1 lg:col-span-2 group">
+                {/* Decorative gradients */}
+                <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-500/10 blur-[80px] rounded-full group-hover:bg-blue-500/20 transition-all duration-500" />
+                <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full group-hover:bg-indigo-500/20 transition-all duration-500" />
+                
                 {subStatus?.plan?.planKey === 'professional' && (
-                  <div className="absolute -right-10 top-6 rotate-45 bg-accent text-white py-1 px-10 text-[10px] font-black uppercase tracking-widest shadow-lg">
-                    Most Popular
+                  <div className="absolute -right-12 top-7 rotate-45 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-1 px-12 text-[10px] font-black uppercase tracking-widest shadow-lg border-y border-white/20">
+                    Pro Tier
                   </div>
                 )}
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Shield className="h-5 w-5 text-accent" /> Active Subscription
+                
+                <CardHeader className="relative z-10 pb-2">
+                  <CardTitle className="flex items-center gap-3 text-white text-lg">
+                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <Shield className="h-5 w-5 text-blue-400" />
+                    </div>
+                    Active Subscription
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                
+                <CardContent className="relative z-10">
                   {!subStatus?.allowed ? (
-                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-4">
+                    <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-2xl flex items-start gap-4 backdrop-blur-sm">
                       <AlertCircle className="h-6 w-6 text-red-500 mt-1 shrink-0" />
                       <div>
-                         <p className="font-bold text-red-500 text-lg">No Active Plan or Limit Reached</p>
-                         <p className="text-sm text-slate-300 mt-1">You must subscribe to a plan to claim priority assisted applications. Free leads are still available.</p>
-                         <Button onClick={() => navigate('/agent-subscription')} className="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold">View Plans</Button>
+                         <p className="font-bold text-red-400 text-lg">No Active Plan or Limit Reached</p>
+                         <p className="text-sm text-slate-400 mt-1 leading-relaxed">You must subscribe to a plan to claim priority assisted applications. Free leads are still available.</p>
+                         <Button onClick={() => navigate('/agent-subscription')} className="mt-5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-500/20">View Subscription Plans</Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col md:flex-row justify-between gap-6">
-                       <div>
-                         <h3 className="text-3xl font-black text-white">{subStatus.plan.planName}</h3>
-                         <p className="text-slate-400 text-sm mt-1">Valid until {new Date(subStatus.plan.expiryDate).toLocaleDateString()}</p>
-                         <div className="mt-6 space-x-3">
-                           <Button onClick={() => navigate('/agent-subscription')} variant="outline" className="border-white/20 text-white hover:bg-white/10">Upgrade Plan</Button>
+                    <div className="flex flex-col md:flex-row justify-between gap-8 pt-2">
+                       <div className="flex flex-col justify-between">
+                         <div>
+                           <h3 className="text-4xl font-black text-white font-heading tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{subStatus.plan.planName}</h3>
+                           <p className="text-slate-400 text-sm mt-2 font-medium flex items-center">
+                             <Calendar className="w-4 h-4 mr-2 opacity-50" />
+                             Valid until <span className="text-slate-200 ml-1">{new Date(subStatus.plan.expiryDate).toLocaleDateString()}</span>
+                           </p>
+                         </div>
+                         <div className="mt-8">
+                           <Button onClick={() => navigate('/agent-subscription')} variant="outline" className="border-white/10 bg-white/5 text-white hover:bg-white/10 hover:border-white/20 rounded-xl transition-all h-11 px-6">
+                             Upgrade Plan
+                           </Button>
                          </div>
                        </div>
-                       <div className="bg-black/30 p-6 rounded-2xl border border-white/5 flex-1 max-w-xs">
-                          <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-4">Application Credits</p>
-                          <div className="flex items-end gap-2 mb-2">
-                            <span className="text-4xl font-black text-accent">{subStatus.plan.limit === -1 ? '∞' : subStatus.remaining}</span>
-                            <span className="text-sm text-slate-400 pb-1">remaining</span>
+                       
+                       <div className="bg-[#020617]/50 p-6 rounded-2xl border border-white/5 flex-1 max-w-xs relative overflow-hidden ring-1 ring-white/5 shadow-inner">
+                          {/* Inner glow */}
+                          <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+                          
+                          <p className="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center">
+                             <LayoutDashboard className="w-3 h-3 mr-2" /> Application Credits
+                          </p>
+                          <div className="flex items-end gap-2 mb-3">
+                            <span className="text-5xl font-black text-white font-heading tracking-tighter">
+                               {subStatus.plan.limit === -1 ? '∞' : subStatus.remaining}
+                            </span>
+                            <span className="text-sm font-bold text-blue-400 pb-1.5 uppercase tracking-wide">remaining</span>
                           </div>
                           {subStatus.plan.limit !== -1 && (
-                            <div className="w-full bg-slate-800 rounded-full h-2 mt-4">
-                              <div className="bg-accent h-2 rounded-full" style={{ width: `${(subStatus.used / subStatus.plan.limit) * 100}%` }}></div>
+                            <div className="w-full bg-[#0f172a] rounded-full h-2.5 mt-5 border border-white/5 overflow-hidden">
+                              <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${(subStatus.used / subStatus.plan.limit) * 100}%` }}>
+                                <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                              </div>
                             </div>
                           )}
-                          <p className="text-[10px] text-slate-500 mt-2 uppercase">{subStatus.used} used of {subStatus.plan.limit === -1 ? 'Unlimited' : subStatus.plan.limit}</p>
+                          <p className="text-[10px] text-slate-500 mt-3 font-bold uppercase tracking-wider flex justify-between">
+                            <span>{subStatus.used} used</span>
+                            <span>{subStatus.plan.limit === -1 ? 'Unlimited' : `${subStatus.plan.limit} total`}</span>
+                          </p>
                        </div>
                     </div>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Performance Stats */}
-              <Card className="bg-slate-900 border-white/10 shadow-xl">
-                 <CardHeader>
-                   <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-400">Total Earnings</CardTitle>
+              {/* Performance Stats - Premium Glassmorphism */}
+              <Card className="bg-[#0f172a]/60 backdrop-blur-2xl border-white/5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-32 bg-green-500/10 blur-[80px] rounded-full group-hover:bg-green-500/20 transition-all duration-500" />
+                 
+                 <CardHeader className="relative z-10 pb-4">
+                   <CardTitle className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center">
+                     <TrendingUp className="w-4 h-4 mr-2 text-green-400" /> Total Earnings
+                   </CardTitle>
                  </CardHeader>
-                 <CardContent>
-                    <div className="flex items-center gap-4">
-                       <div className="h-12 w-12 rounded-2xl bg-green-500/10 flex items-center justify-center">
-                         <IndianRupee className="h-6 w-6 text-green-500" />
+                 <CardContent className="relative z-10">
+                    <div className="flex flex-col gap-4">
+                       <div className="flex items-end gap-1">
+                         <span className="text-xl font-bold text-slate-400 pb-1">₹</span>
+                         <span className="text-5xl font-black text-white font-heading tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-green-100">
+                           {((wallet?.totalEarned || 0) / 100).toLocaleString('en-IN')}
+                         </span>
                        </div>
-                       <div>
-                         <p className="text-3xl font-black text-white">₹{(wallet?.totalEarned || 0) / 100}</p>
-                         <p className="text-xs text-green-500 flex items-center gap-1 mt-1 font-bold"><TrendingUp className="h-3 w-3" /> Lifetime</p>
+                       
+                       <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/5">
+                         <div className="flex items-center text-xs font-bold text-green-400 bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/20">
+                           <ArrowUpRight className="h-3 w-3 mr-1" /> Lifetime
+                         </div>
+                         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-green-500/20">
+                           <IndianRupee className="h-5 w-5 text-white" />
+                         </div>
                        </div>
                     </div>
                  </CardContent>
@@ -718,8 +759,9 @@ const AgentDashboard = () => {
                 )}
               </div>
           </TabsContent>
-        </Tabs>
-      </div>
+            </div>
+        </div>
+      </Tabs>
     </div>
   );
 };

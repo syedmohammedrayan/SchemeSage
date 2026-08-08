@@ -168,30 +168,30 @@ const Eligibility = () => {
 
       <main className="container mx-auto px-4 py-32 max-w-5xl">
         <div className="text-center mb-6">
-          <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight mb-4">
-            Discover <span className="text-[#F97316]">Your Benefits</span>
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-100 tracking-tight mb-4">
+            Eligibility Check
           </h1>
         </div>
 
         {/* Mode Toggle Tabs */}
-        <div className="flex justify-center mb-10">
-          <div className="bg-[#020617] border border-white/10 p-1.5 rounded-2xl flex gap-1 shadow-2xl">
+        <div className="flex justify-center mb-12">
+          <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex gap-1 shadow-sm">
             <button
               onClick={() => handleModeSwitch('voice')}
-              className={`px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+              className={`px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors ${
                 mode === 'voice' 
-                  ? 'bg-[#F97316] text-white shadow-lg shadow-[#F97316]/20' 
-                  : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
+                  ? 'bg-blue-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
-              <Mic className="h-4 w-4" /> Voice Input
+              <Mic className="h-4 w-4" /> Voice Assistant
             </button>
             <button
               onClick={() => handleModeSwitch('manual')}
-              className={`px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+              className={`px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors ${
                 mode === 'manual' 
-                  ? 'bg-[#F97316] text-white shadow-lg shadow-[#F97316]/20' 
-                  : 'text-[#94A3B8] hover:text-white hover:bg-white/5'
+                  ? 'bg-blue-600 text-white shadow-sm' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
               <FileText className="h-4 w-4" /> Fill Manually
@@ -383,43 +383,51 @@ const Eligibility = () => {
           <div className="mt-8 space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
             
             {/* User Profile Summary */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <h2 className="text-2xl font-black flex items-center gap-3">
-                  <User className="h-6 w-6 text-[#F97316]" /> 
+            <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-8 shadow-xl relative">
+              
+              <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-6 mb-6 gap-4">
+                <h2 className="text-xl font-bold flex items-center gap-3 text-slate-100">
+                  <div className="h-10 w-10 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-500">
+                    <User className="h-5 w-5" /> 
+                  </div>
                   Extracted Profile
                 </h2>
-                <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
-                   <div className="h-2 w-24 bg-[#020617] rounded-full overflow-hidden shrink-0">
-                     <div className="h-full bg-[#F97316]" style={{ width: `${result.profileCompleteness || 0}%` }} />
+                
+                <div className="flex items-center gap-4 bg-slate-900 px-5 py-2.5 rounded-xl border border-slate-800">
+                   <div className="flex flex-col">
+                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Completeness</span>
+                     <div className="h-2 w-32 bg-slate-800 rounded-full overflow-hidden shrink-0">
+                       <div className="h-full bg-blue-600" style={{ width: `${result.profileCompleteness || 0}%` }} />
+                     </div>
                    </div>
-                   <span className="text-xs font-bold text-[#F97316]">{result.profileCompleteness || 0}% Complete</span>
+                   <span className="text-base font-bold text-slate-200">
+                     {result.profileCompleteness || 0}%
+                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {Object.entries(result.profile || {}).map(([key, val]: any) => {
                   if (val === null || val === undefined || val === '') return null;
                   return (
-                    <Card key={key} className="bg-[#020617] border-white/10 shadow-lg hover:border-white/20 transition-colors">
-                      <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center shrink-0">
-                          {getProfileIcon(key)}
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8] mb-1">{key}</p>
-                          <p className="font-bold text-white text-sm capitalize">{String(val)}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <div key={key} className="flex items-start gap-4 p-4 rounded-xl hover:bg-slate-800/50 transition-colors border border-transparent hover:border-slate-800">
+                      <div className="h-10 w-10 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 border border-slate-800 text-slate-400">
+                        {getProfileIcon(key)}
+                      </div>
+                      <div className="flex flex-col justify-center">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{key}</p>
+                        <p className="font-semibold text-slate-200 text-sm capitalize">{String(val)}</p>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
               
               {/* Optional: Translation Feedback */}
               {result.translatedText && (
-                <div className="flex gap-4 items-center justify-center pt-4">
-                   <p className="text-xs text-[#64748B] italic">"{result.translatedText}"</p>
+                <div className="mt-8 pt-6 border-t border-slate-800 flex gap-3 items-center justify-center">
+                   <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                   <p className="text-sm text-slate-400 font-medium">Understood as: <span className="text-slate-300">"{result.translatedText}"</span></p>
                 </div>
               )}
             </div>
@@ -454,53 +462,56 @@ const Eligibility = () => {
                     const matchColor = isStrong ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20";
 
                     return (
-                      <Card key={match.scheme?.id || Math.random()} className="bg-[#020617] border-white/10 hover:border-[#F97316]/30 transition-all duration-300 shadow-xl overflow-hidden flex flex-col h-full group">
+                      <Card key={match.scheme?.id || Math.random()} className="bg-[#0F172A] border-slate-800 hover:border-slate-700 transition-colors shadow-lg flex flex-col h-full rounded-2xl">
                         
                         {/* Header */}
-                        <div className="p-6 border-b border-white/5">
+                        <div className="p-6 border-b border-slate-800">
                           <div className="flex justify-between items-start mb-4">
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border ${matchColor}`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded border ${
+                              isStrong ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' : 'text-slate-400 bg-slate-800 border-slate-700'
+                            }`}>
                               {isStrong ? 'Strong Match' : 'Potential Match'} • {match.matchScore}%
                             </span>
                           </div>
-                          <h3 className="text-xl font-bold text-white mb-2 leading-tight group-hover:text-[#F97316] transition-colors">{match.scheme?.name}</h3>
-                          <p className="text-sm font-semibold text-[#64748B] uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#F97316]" /> {match.scheme?.ministry || 'Government of India'}
+                          <h3 className="text-lg font-bold text-slate-100 mb-2 leading-tight">
+                            {match.scheme?.name}
+                          </h3>
+                          <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-2">
+                            {match.scheme?.ministry || 'Government of India'}
                           </p>
                         </div>
 
                         {/* Body */}
                         <div className="p-6 flex-grow flex flex-col gap-5">
                           {match.scheme?.benefits && (
-                            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
-                              <p className="text-[10px] font-black uppercase tracking-widest text-[#F97316] mb-2">Key Benefits</p>
-                              <p className="text-sm text-white font-medium leading-relaxed">{match.scheme?.benefits}</p>
+                            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Key Benefits</p>
+                              <p className="text-sm text-slate-300 font-medium leading-relaxed">{match.scheme?.benefits}</p>
                             </div>
                           )}
 
                           {match.reason && (
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-[#94A3B8] mb-3">Why Recommended</p>
-                              <div className="flex items-start gap-2.5 text-sm text-[#CBD5E1]">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                                <span>{match.reason}</span>
+                            <div className="mt-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Why Recommended</p>
+                              <div className="flex items-start gap-3 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                                <CheckCircle2 className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                                <span className="text-sm font-medium text-slate-300">{match.reason}</span>
                               </div>
                             </div>
                           )}
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="p-4 border-t border-white/5 bg-[#0F172A]/50 flex gap-3">
+                        <div className="p-4 border-t border-slate-800 bg-slate-900/50 flex gap-3 rounded-b-2xl">
                           <Button 
                             variant="outline" 
-                            className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-white h-12 rounded-xl font-bold"
+                            className="flex-1 bg-transparent border-slate-700 hover:bg-slate-800 text-slate-300 h-11 rounded-lg font-semibold"
                             onClick={() => navigate(`/scheme/${match.scheme?.id}`)}
                           >
                             View Details
                           </Button>
                           <Button 
-                            variant="accent" 
-                            className="flex-1 h-12 rounded-xl font-bold shadow-lg shadow-[#F97316]/20"
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-11 rounded-lg font-semibold border-0"
                             onClick={() => navigate(`/apply/${match.scheme?.id}`)}
                           >
                             Apply Now <ArrowRight className="ml-2 h-4 w-4" />
